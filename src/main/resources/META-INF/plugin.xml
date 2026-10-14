@@ -1,0 +1,59 @@
+<idea-plugin>
+    <id>com.ykb.review.plugin</id>
+    <name>YKB Bitbucket AI Code Review</name>
+    <vendor email="developer@yapikredi.com.tr" url="https://www.yapikredi.com.tr">Yapı Kredi</vendor>
+
+    <description><![CDATA[
+        <h2>Bitbucket AI Pull Request & Local Code Reviewer</h2>
+        <p>Bitbucket PR'larını ve yerel değişiklikleri doğrudan IntelliJ IDEA içerisinde yapay zeka ile denetleyen kurumsal kod inceleme eklentisi.</p>
+        <ul>
+            <li><b>Çift Katmanlı Model Mimarisi:</b> Trivial kontroller için hızlı modeller, mimari/güvenlik/hata kontrolleri için güçlü modeller.</li>
+            <li><b>Doğrudan Bitbucket Entegrasyonu:</b> PR listesi, diff okuma ve otomatik satır içi (inline) yorum gönderme.</li>
+            <li><b>Yerel Kod İnceleme:</b> Commit atmadan önce staged/uncommitted değişiklikleri inceleme.</li>
+            <li><b>Kişiselleştirilebilir Kurallar:</b> Proje bazlı ek denetim yönergeleri ve severity filtreleme.</li>
+        </ul>
+    ]]></description>
+
+    <depends>com.intellij.modules.platform</depends>
+
+    <extensions defaultExtensionNs="com.intellij">
+        <!-- Settings / Konfigürasyon Servisi -->
+        <applicationService serviceImplementation="com.ykb.review.config.ReviewSettingsState"/>
+        
+        <!-- Settings Ekranı (Settings -> Tools -> YKB AI Review) -->
+        <projectConfigurable
+                parentId="tools"
+                instance="com.ykb.review.config.ReviewSettingsConfigurable"
+                id="com.ykb.review.config.ReviewSettingsConfigurable"
+                displayName="YKB AI Code Review"/>
+
+        <!-- Tool Window (IDE Yan Paneli) -->
+        <toolWindow id="YKB AI Review"
+                    anchor="right"
+                    secondary="false"
+                    factoryClass="com.ykb.review.ui.ReviewToolWindowFactory"
+                    icon="AllIcons.Actions.Preview"/>
+        
+        <!-- Bildirim Grubu -->
+        <notificationGroup id="YKB AI Review Notifications"
+                           displayType="BALLOON"
+                           key="notification.group.ykb.review"/>
+    </extensions>
+
+    <actions>
+        <group id="YKB.Review.ActionGroup" text="YKB AI Review" popup="true" icon="AllIcons.Actions.Preview">
+            <add-to-group group-id="ToolsMenu" anchor="last"/>
+            <add-to-group group-id="Git.Menu" anchor="last"/>
+            <action id="YKB.Review.TriggerPRReview"
+                    class="com.ykb.review.actions.TriggerReviewAction"
+                    text="Bitbucket PR İncelemesini Başlat"
+                    description="Seçili veya aktif PR için AI kod incelemesi çalıştırır">
+            </action>
+            <action id="YKB.Review.TriggerLocalReview"
+                    class="com.ykb.review.actions.LocalReviewAction"
+                    text="Yerel Değişiklikleri İncele (Pre-Commit)"
+                    description="Commit öncesi yerel diff'i AI ile denetler">
+            </action>
+        </group>
+    </actions>
+</idea-plugin>

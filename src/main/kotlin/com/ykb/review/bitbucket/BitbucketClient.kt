@@ -1,0 +1,127 @@
+package com.ykb.review.bitbucket
+
+import com.google.gson.Gson
+import com.ykb.review.config.ReviewSettingsState
+import okhttp3.MediaType.Companion.toMediaType
+import okhttp3.OkHttpClient
+import okhttp3.Request
+import okhttp3.RequestBody.Companion.toRequestBody
+import java.io.IOException
+import java.util.concurrent.TimeUnit
+
+class BitbucketClient(
+    private val baseUrl: String = ReviewSettingsState.instance.bitbucketBaseUrl.trimEnd('/'),
+    private val token: String = ReviewSettingsState.instance.bitbucketToken
+) {
+    private val client: OkHttpClient = OkHttpClient.Builder()
+        .connectTimeout(30, TimeUnit.SECONDS)
+        .readTimeout(60, TimeUnit.SECONDS)
+        .writeTimeout(30, TimeUnit.SECONDS)
+        .build()
+
+    private val gson = Gson()
+    private val jsonMediaType = "application/json; charset=utf-8".toMediaType()
+
+    private fun buildRequest(path: String): Request.Builder {
+        val cleanPath = if (path.startsWith("/")) path else "/$path"
+        val builder = Request.Builder()
+            .url("$baseUrl$cleanPath")
+            .header("Accept", "application/json")
+
+        if (token.isNotBlank()) {
+            builder.header("Authorization", "Bearer $token")
+        }
+        return builder
+    }
+
+    /**
+     * Bitbucket Server / Data Center açık PR listesini döner
+     */
+    @Throws(IOException::class)
+    fun getOpenPullRequests(projectKey: String, repoSlug: String): List<PullRequest> {
+        val path = "/rest/api/1.0/projects/$projectKey/repos/$repoSlug/pull-requests?state=OPEN&limit=50"
+        val request = buildRequest(path).get().build()
+
+        client.newCall(request).execute().use { response ->
+            if (!response.isSuccessful) {
+                throw IOException("Bitbucket PR listesi alınamadı (HTTP ${response.code}): ${response.message}")
+            }
+            val body = response.body?.string() ?: return emptyList()
+            val parsed = gson.fromJson(body, PullRequestResponse::class.java)
+            return parsed.values
+        }
+    }
+
+    /**
+     * PR Diff metnini çeker (Unified Diff)
+     */
+    @Throws(IOException::class)
+    fun getPullRequestDiff(projectKey: String, repoSlug: String, pullRequestId: Long): String {
+        val path = "/rest/api/1.0/projects/$projectKey/repos/$repoSlug/pull-requests/$pullRequestId/diff"
+        val request = buildRequest(path)
+            .header("Accept", "text/plain")
+            .get()
+            .build()
+
+        client.newCall(request).execute().use { response ->
+            if (!response.isSuccessful) {
+                throw IOException("Bitbucket diff alınamadı (HTTP ${response.code}): ${response.message}")
+            }
+            return response.body?.string() ?: ""
+        }
+    }
+
+    /**
+     * PR genel yorumu gönderir
+     */
+    @Throws(IOException::class)
+    fun postGeneralComment(projectKey: String, repoSlug: String, pullRequestId: Long, markdownComment: String): Boolean {
+        val path = "/rest/api/1.0/projects/$projectKey/repos/$repoSlug/pull-requests/$pullRequestId/comments"
+        val payload = BitbucketCommentPayload(text = markdownComment)
+        val requestBody = gson.toJson(payload).toRequestBody(jsonMediaType)
+
+        val request = buildRequest(path)
+            .post(requestBody)
+            .build()
+
+        client.newCall(request).execute().use { response ->
+            if (!response.isSuccessful) {
+                throw IOException("Yorum gönderilemedi (HTTP ${response.code}): ${response.message}")
+            }
+            return true
+        }
+    }
+
+    /**
+     * PR Diff üzerinde satır içi (inline) yorum gönderir
+     */
+    @Throws(IOException::class)
+    fun postInlineComment(
+        projectKey: String,
+        repoSlug: String,
+        pullRequestId: Long,
+        filePath: String,
+        lineNumber: Int,
+        side: String, // "new" -> ADDED, "old" -> REMOVED
+        comment: String
+    ): Boolean {
+        val path = "/rest/api/1.0/projects/$projectKey/repos/$repoSlug/pull-requests/$pullRequestId/comments"
+        val lineType = if (side.equals("old", ignoreCase = true)) "REMOVED" else "ADDED"
+        val anchor = InlineCommentAnchor(line = lineNumber, lineType = lineType, path = filePath)
+        val payload = BitbucketCommentPayload(text = comment, anchor = anchor)
+
+        val requestBody = gson.toJson(payload).toRequestBody(jsonMediaType)
+        val request = buildRequest(path)
+            .post(requestBody)
+            .build()
+
+        client.newCall(request).execute().use { response ->
+            if (!response.isSuccessful) {
+                // Inline yorum hatasında log veya false dön
+                System.err.println("Satır içi yorum gönderilemedi ($filePath:$lineNumber): ${response.code} ${response.message}")
+                return false
+            }
+            return true
+        }
+    }
+}
