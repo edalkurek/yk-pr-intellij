@@ -1,97 +1,48 @@
 package com.ykb.review.bitbucket
 
-import com.google.gson.annotations.SerializedName
+import java.io.IOException
 
-data class BitbucketRepository(
-    val slug: String,
-    val name: String = slug,
-    val projectKey: String = ""
-)
-
-data class BitbucketProject(
-    val key: String,
-    val name: String? = null
-)
-
-data class RepositoryRef(
-    val slug: String,
-    val name: String? = null,
-    val project: BitbucketProject? = null
-)
-
-data class BranchRef(
-    val id: String,
-    val displayId: String,
-    val latestCommit: String? = null,
-    val repository: RepositoryRef? = null
-)
-
-data class PullRequestAuthor(
-    val user: BitbucketUser? = null
-)
-
-data class BitbucketUser(
-    val name: String,
-    val displayName: String? = null,
-    val emailAddress: String? = null
+/** Bitbucket Server/Data Center PR kimliği. [baseUrl] web (context path dahil) adresidir. */
+data class PullRequestRef(
+    val baseUrl: String,
+    val projectKey: String,
+    val repositorySlug: String,
+    val pullRequestId: Long,
 )
 
 data class PullRequest(
-    val id: Long,
+    val ref: PullRequestRef,
     val title: String,
-    val description: String? = null,
-    val state: String = "OPEN",
-    val author: PullRequestAuthor? = null,
-    val fromRef: BranchRef? = null,
-    val toRef: BranchRef? = null,
-    val createdDate: Long? = null,
-    val updatedDate: Long? = null
-) {
-    val repositorySlug: String
-        get() = toRef?.repository?.slug ?: fromRef?.repository?.slug ?: ""
-
-    val projectKey: String
-        get() = toRef?.repository?.project?.key ?: fromRef?.repository?.project?.key ?: ""
-
-    val latestCommitHash: String
-        get() = fromRef?.latestCommit ?: ""
-}
-
-data class PullRequestResponse(
-    val size: Int = 0,
-    val limit: Int = 25,
-    val isLastPage: Boolean = true,
-    val values: List<PullRequest> = emptyList(),
-    val start: Int = 0,
-    val nextPageStart: Int? = null
+    val description: String?,
+    val state: String,
+    val url: String,
+    val authorName: String,
+    val sourceBranch: String,
+    val destinationBranch: String,
+    val latestCommitHash: String,
+    val updatedDate: Long?,
 )
 
-data class RepositoryResponse(
-    val size: Int = 0,
-    val limit: Int = 100,
-    val isLastPage: Boolean = true,
-    val values: List<RepositoryRef> = emptyList(),
-    val start: Int = 0,
-    val nextPageStart: Int? = null
+data class BitbucketRepository(
+    val baseUrl: String,
+    val projectKey: String,
+    val slug: String,
+    val name: String,
 )
 
-data class InlineCommentAnchor(
-    val line: Int,
-    val lineType: String = "ADDED", // ADDED or REMOVED
-    val path: String,
-    val diffType: String = "EFFECTIVE"
-)
-
-data class BitbucketCommentPayload(
+data class PullRequestComment(
+    val id: Long,
     val text: String,
-    val anchor: InlineCommentAnchor? = null
+    val deleted: Boolean,
 )
 
-data class CommentItem(
-    val id: Long = 0,
-    val text: String = ""
+/** Satır içi yorum konumu. side: "old" | "new", lineType: ADDED | REMOVED | CONTEXT */
+data class InlineCommentLocation(
+    val path: String,
+    val srcPath: String?,
+    val line: Int,
+    val side: String,
+    val lineType: String,
 )
 
-data class CommentResponse(
-    val values: List<CommentItem> = emptyList()
-)
+class BitbucketHttpException(val status: Int, message: String) : IOException(message)

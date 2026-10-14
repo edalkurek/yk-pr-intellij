@@ -1,22 +1,46 @@
 package com.ykb.review.ai
 
-import com.google.gson.annotations.SerializedName
+object ReviewConstants {
+    val RISK_LEVELS = listOf("low", "medium", "high")
+    val FINDING_TYPES = listOf("bug", "security", "performance", "readability", "test", "architecture")
+    const val PR_SUMMARY_LIMIT = 1000
+    const val FINAL_COMMENT_LIMIT = 1000
+
+    fun riskScore(level: String): Int = when (level) {
+        "high" -> 2
+        "medium" -> 1
+        else -> 0
+    }
+}
 
 data class ReviewFinding(
     val file: String,
     val line: Int? = null,
-    val side: String? = "new", // "new" veya "old"
-    val severity: String = "medium", // "high", "medium", "low"
-    val type: String = "bug", // "bug", "security", "performance", "readability", "test", "architecture"
+    val side: String? = null, // "new" | "old" | null
+    val severity: String,     // "low" | "medium" | "high"
+    val type: String,         // ReviewConstants.FINDING_TYPES
     val message: String,
-    val suggestion: String? = null
+    val suggestion: String,
 )
 
 data class ReviewResult(
-    val summary: String = "",
-    val riskLevel: String = "low", // "low", "medium", "high"
+    val summary: String,
+    val riskLevel: String,
     val findings: List<ReviewFinding> = emptyList(),
     val testSuggestions: List<String> = emptyList(),
-    val finalComment: String = "",
-    val modelUsed: String? = null // Hangi model katmanının çalıştırıldığını loglamak için
+    val finalComment: String,
+    /** Hangi model(ler)in kullanıldığı (yalnızca IDE içinde gösterilir). */
+    val modelUsed: String? = null,
 )
+
+data class ReviewContext(
+    val title: String? = null,
+    val description: String? = null,
+    val sourceBranch: String? = null,
+    val targetBranch: String? = null,
+    val chunkLabel: String? = null,
+    val files: List<String> = emptyList(),
+    val extraInstructions: String? = null,
+)
+
+data class ChatMessage(val role: String, val content: String)

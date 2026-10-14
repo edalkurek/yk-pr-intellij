@@ -1,111 +1,109 @@
 package com.ykb.review.config
 
 import com.intellij.openapi.options.Configurable
-import com.intellij.openapi.project.Project
+import com.intellij.openapi.options.ConfigurationException
 import com.ykb.review.review.AutomaticReviewService
 import javax.swing.JComponent
 
-class ReviewSettingsConfigurable(private val project: Project) : Configurable {
+/**
+ * Uygulama seviyesinde ayar sayfası (Settings → Tools → YKB AI Code Review).
+ * Ayarlar uygulama geneli olduğu için proje parametresi almaz; bildirimlerden proje olmadan da açılabilir.
+ */
+class ReviewSettingsConfigurable : Configurable {
 
-    private var settingsComponent: ReviewSettingsComponent? = null
+    private var ui: ReviewSettingsComponent? = null
 
     override fun getDisplayName(): String = "YKB AI Code Review"
 
     override fun createComponent(): JComponent {
         val component = ReviewSettingsComponent()
-        settingsComponent = component
+        ui = component
         reset()
         return component.mainPanel
     }
 
     override fun isModified(): Boolean {
-        val state = ReviewSettingsState.instance
-        val ui = settingsComponent ?: return false
-
-        val currentRepoInstructions = mutableMapOf<String, String>()
-        for (i in 0 until ui.repoInstructionsModel.rowCount) {
-            val key = ui.repoInstructionsModel.getValueAt(i, 0) as String
-            val value = ui.repoInstructionsModel.getValueAt(i, 1) as String
-            currentRepoInstructions[key] = value
-        }
-
-        return ui.bitbucketUrlField.text != state.bitbucketBaseUrl ||
-                String(ui.bitbucketTokenField.password) != state.bitbucketToken ||
-                ui.autoReviewEnabledCheck.isSelected != state.automaticReviewEnabled ||
-                ui.autoReviewIntervalField.text != state.automaticReviewIntervalMinutes.toString() ||
-                ui.aiBaseUrlField.text != state.aiBaseUrl ||
-                String(ui.aiApiKeyField.password) != state.aiApiKey ||
-                ui.fastModelField.text != state.fastModelName ||
-                ui.complexModelField.text != state.complexModelName ||
-                ui.minSeverityCombo.selectedItem != state.minSeverity ||
-                ui.maxChunkLinesField.text != state.maxChunkLines.toString() ||
-                ui.extraInstructionsArea.text != state.extraInstructions ||
-                ui.maskSecretsCheck.isSelected != state.maskSecretsInDiff ||
-                currentRepoInstructions != state.repoInstructions
+        val s = ReviewSettingsState.instance
+        val ui = ui ?: return false
+        return ui.bitbucketUrlField.text.trim() != s.bitbucketBaseUrl ||
+            ui.typedBitbucketToken.isNotEmpty() ||
+            ui.typedApiKey.isNotEmpty() ||
+            ui.autoReviewEnabledCheck.isSelected != s.automaticReviewEnabled ||
+            ui.interval != s.automaticReviewIntervalMinutes ||
+            ui.aiBaseUrlField.text.trim() != s.aiBaseUrl ||
+            ui.fastModel != s.fastModelName ||
+            ui.complexModel != s.complexModelName ||
+            ui.minSeverityCombo.selectedItem != s.minSeverity ||
+            ui.maxChunkChars != s.maxChunkChars ||
+            ui.extraInstructionsArea.text.trim() != s.extraInstructions ||
+            ui.maskSecretsCheck.isSelected != s.maskSecretsInDiff ||
+            ui.disableTlsCheck.isSelected != s.disableTlsVerification ||
+            ui.repoInstructions() != s.repoInstructions.filterValues { it.isNotBlank() }
     }
 
     override fun apply() {
-        val state = ReviewSettingsState.instance
-        val ui = settingsComponent ?: return
+        val s = ReviewSettingsState.instance
+        val ui = ui ?: return
 
-        state.bitbucketBaseUrl = ui.bitbucketUrlField.text.trim()
-        state.bitbucketToken = String(ui.bitbucketTokenField.password).trim()
-
-        val oldEnabled = state.automaticReviewEnabled
-        val oldInterval = state.automaticReviewIntervalMinutes
-
-        state.automaticReviewEnabled = ui.autoReviewEnabledCheck.isSelected
-        state.automaticReviewIntervalMinutes = ui.autoReviewIntervalField.text.toIntOrNull()?.coerceIn(1, 1440) ?: 5
-
-        state.aiBaseUrl = ui.aiBaseUrlField.text.trim()
-        state.aiApiKey = String(ui.aiApiKeyField.password).trim()
-        state.fastModelName = ui.fastModelField.text.trim()
-        state.complexModelName = ui.complexModelField.text.trim()
-
-        state.minSeverity = (ui.minSeverityCombo.selectedItem as? String) ?: "low"
-        state.maxChunkLines = ui.maxChunkLinesField.text.toIntOrNull() ?: 450
-        state.extraInstructions = ui.extraInstructionsArea.text.trim()
-        state.maskSecretsInDiff = ui.maskSecretsCheck.isSelected
-
-        state.repoInstructions.clear()
-        for (i in 0 until ui.repoInstructionsModel.rowCount) {
-            val key = ui.repoInstructionsModel.getValueAt(i, 0) as String
-            val value = ui.repoInstructionsModel.getValueAt(i, 1) as String
-            state.repoInstructions[key] = value
+        val bitbucketUrl: String
+        val aiUrl: String
+        val fast: String
+        val complex: String
+        try {
+            bitbucketUrl = ConfigValidation.bitbucketBaseUrl(ui.bitbucketUrlField.text)
+            aiUrl = ConfigValidation.modelBaseUrl(ui.aiBaseUrlField.text)
+            fast = ConfigValidation.modelName(ui.fastModel, "Hızlı model")
+            complex = ConfigValidation.modelName(ui.complexModel, "Güçlü model")
+            ConfigValidation.interval(ui.interval)
+        } catch (e: ConfigurationError) {
+            throw ConfigurationException(e.message, "YKB AI Code Review")
         }
 
-        // Zamanlayıcıyı yeniden başlat
-        if (oldEnabled != state.automaticReviewEnabled || oldInterval != state.automaticReviewIntervalMinutes) {
-            AutomaticReviewService.getInstance(project).restartTimer()
+        val tokenAvailable = ui.typedBitbucketToken.isNotEmpty() || s.bitbucketTokenStored || s.bitbucketToken.isNotBlank()
+        if (ui.autoReviewEnabledCheck.isSelected && !tokenAvailable) {
+            throw ConfigurationException("Auto PR Review için önce Bitbucket access token girilmelidir.", "YKB AI Code Review")
         }
+
+        s.bitbucketBaseUrl = bitbucketUrl
+        s.aiBaseUrl = aiUrl
+        s.fastModelName = fast
+        s.complexModelName = complex
+        s.automaticReviewEnabled = ui.autoReviewEnabledCheck.isSelected
+        s.automaticReviewIntervalMinutes = ui.interval
+        s.minSeverity = (ui.minSeverityCombo.selectedItem as? String) ?: "low"
+        s.maxChunkChars = ui.maxChunkChars
+        s.extraInstructions = ui.extraInstructionsArea.text.trim()
+        s.maskSecretsInDiff = ui.maskSecretsCheck.isSelected
+        s.disableTlsVerification = ui.disableTlsCheck.isSelected
+        s.repoInstructions = ui.repoInstructions().toMutableMap()
+
+        // Gizli bilgiler yalnızca yeni değer yazıldıysa güncellenir.
+        if (ui.typedBitbucketToken.isNotEmpty()) SecretStore.set(SecretStore.Key.BITBUCKET_TOKEN, ui.typedBitbucketToken)
+        if (ui.typedApiKey.isNotEmpty()) SecretStore.set(SecretStore.Key.MODEL_API_KEY, ui.typedApiKey)
+        ui.updateSecretHints(s)
+
+        AutomaticReviewService.getInstance().restartTimer()
     }
 
     override fun reset() {
-        val state = ReviewSettingsState.instance
-        val ui = settingsComponent ?: return
-
-        ui.bitbucketUrlField.text = state.bitbucketBaseUrl
-        ui.bitbucketTokenField.text = state.bitbucketToken
-        ui.autoReviewEnabledCheck.isSelected = state.automaticReviewEnabled
-        ui.autoReviewIntervalField.text = state.automaticReviewIntervalMinutes.toString()
-
-        ui.aiBaseUrlField.text = state.aiBaseUrl
-        ui.aiApiKeyField.text = state.aiApiKey
-        ui.fastModelField.text = state.fastModelName
-        ui.complexModelField.text = state.complexModelName
-
-        ui.minSeverityCombo.selectedItem = state.minSeverity
-        ui.maxChunkLinesField.text = state.maxChunkLines.toString()
-        ui.extraInstructionsArea.text = state.extraInstructions
-        ui.maskSecretsCheck.isSelected = state.maskSecretsInDiff
-
-        ui.repoInstructionsModel.rowCount = 0
-        for ((key, value) in state.repoInstructions) {
-            ui.repoInstructionsModel.addRow(arrayOf(key, value))
-        }
+        val s = ReviewSettingsState.instance
+        val ui = ui ?: return
+        ui.bitbucketUrlField.text = s.bitbucketBaseUrl
+        ui.aiBaseUrlField.text = s.aiBaseUrl
+        ui.fastModelCombo.selectedItem = s.fastModelName
+        ui.complexModelCombo.selectedItem = s.complexModelName
+        ui.autoReviewEnabledCheck.isSelected = s.automaticReviewEnabled
+        ui.autoReviewIntervalSpinner.value = s.automaticReviewIntervalMinutes.coerceIn(1, 1440)
+        ui.minSeverityCombo.selectedItem = s.minSeverity
+        ui.maxChunkCharsSpinner.value = s.maxChunkChars.coerceIn(5_000, 500_000)
+        ui.extraInstructionsArea.text = s.extraInstructions
+        ui.maskSecretsCheck.isSelected = s.maskSecretsInDiff
+        ui.disableTlsCheck.isSelected = s.disableTlsVerification
+        ui.setRepoInstructions(s.repoInstructions.filterValues { it.isNotBlank() })
+        ui.updateSecretHints(s)
     }
 
     override fun disposeUIResources() {
-        settingsComponent = null
+        ui = null
     }
 }

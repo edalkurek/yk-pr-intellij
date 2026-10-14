@@ -1,58 +1,40 @@
 package com.ykb.review.ai
 
-import org.junit.jupiter.api.Assertions.*
+import org.junit.jupiter.api.Assertions.assertEquals
+import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
 
 class SmartModelRouterTest {
 
+    private fun chunk(files: List<String>, content: String) = DiffChunk(0, 1, files, content)
+
     @Test
-    fun `guvenlik ve auth iceren diff parcalari Guclu Modele yonlendirilmeli`() {
-        val chunk = DiffChunk(
-            index = 1,
-            totalChunks = 1,
-            fileNames = listOf("src/main/com/ykb/auth/TokenService.java"),
-            content = "public String generateToken() { String secret = 'test'; }",
-            lineCount = 20,
-            isHighComplexity = true
-        )
-
-        val decision = SmartModelRouter.decide(chunk)
-
-        assertEquals(ModelTier.COMPLEX_TIER, decision.tier)
-        assertTrue(decision.reason.contains("Güvenlik"))
+    fun `guvenlik iceren yol guclu modele gider`() {
+        val d = SmartModelRouter.decide(chunk(listOf("src/auth/LoginService.java"), "+int a = 1;"), "fast", "complex")
+        assertEquals(ModelTier.COMPLEX_TIER, d.tier)
+        assertEquals("complex", d.modelName)
+        assertTrue(d.reason.contains("Güvenlik"))
     }
 
     @Test
-    fun `yuksek satir sayili backend dosyalari Guclu Modele yonlendirilmeli`() {
-        val chunk = DiffChunk(
-            index = 1,
-            totalChunks = 1,
-            fileNames = listOf("src/main/com/ykb/service/PaymentProcessor.kt"),
-            content = "val x = 1\n".repeat(180),
-            lineCount = 180,
-            isHighComplexity = true
-        )
-
-        val decision = SmartModelRouter.decide(chunk)
-
-        assertEquals(ModelTier.COMPLEX_TIER, decision.tier)
-        assertTrue(decision.reason.contains("Geniş kapsamlı backend"))
+    fun `genis backend degisikligi guclu modele gider`() {
+        val body = (1..160).joinToString("\n") { "+int v$it = $it;" }
+        val d = SmartModelRouter.decide(chunk(listOf("src/Calc.java"), body), "fast", "complex")
+        assertEquals(ModelTier.COMPLEX_TIER, d.tier)
+        assertTrue(d.reason.contains("Geniş kapsamlı backend"))
     }
 
     @Test
-    fun `kucuk ve rutin degisiklikler Hizli Modele yonlendirilmeli`() {
-        val chunk = DiffChunk(
-            index = 1,
-            totalChunks = 1,
-            fileNames = listOf("src/main/resources/application.properties"),
-            content = "app.version=1.0.1",
-            lineCount = 5,
-            isHighComplexity = false
-        )
+    fun `rutin degisiklik hizli modele gider`() {
+        val d = SmartModelRouter.decide(chunk(listOf("README.md"), "+Yeni satır"), "fast", "complex")
+        assertEquals(ModelTier.FAST_TIER, d.tier)
+        assertEquals("fast", d.modelName)
+        assertTrue(d.reason.contains("Rutin"))
+    }
 
-        val decision = SmartModelRouter.decide(chunk)
-
-        assertEquals(ModelTier.FAST_TIER, decision.tier)
-        assertTrue(decision.reason.contains("Rutin"))
+    @Test
+    fun `tek model yapilandirildiysa o kullanilir`() {
+        val d = SmartModelRouter.decide(chunk(listOf("README.md"), "+x"), "same", "same")
+        assertEquals("same", d.modelName)
     }
 }

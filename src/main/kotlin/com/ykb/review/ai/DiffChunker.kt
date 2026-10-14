@@ -1,99 +1,75 @@
 package com.ykb.review.ai
 
 data class DiffChunk(
-    val index: Int,
-    val totalChunks: Int,
-    val fileNames: List<String>,
+    val index: Int,        // 0 tabanlı
+    val total: Int,
+    val files: List<String>,
     val content: String,
-    val lineCount: Int,
-    val isHighComplexity: Boolean = false // Smart Router için karmaşıklık bayrağı
-)
+) {
+    val lineCount: Int get() = content.count { it == '\n' } + 1
+}
 
+/** VS Code diffChunker.ts karşılığı: mümkünse dosyaları bütün tutar, çok büyük dosyaları sınırlı parçalara böler. */
 object DiffChunker {
 
-    private val COMPLEXITY_INDICATORS = setOf(
-        "security", "auth", "token", "password", "crypto", "payment",
-        "service", "controller", "transaction", "repository", "config"
-    )
+    private data class Section(val files: List<String>, val content: String)
 
-    fun chunkDiff(rawDiff: String, maxLinesPerChunk: Int = 450): List<DiffChunk> {
-        val lines = rawDiff.lines()
-        val fileBlocks = mutableListOf<MutableList<String>>()
-        var currentBlock = mutableListOf<String>()
-
-        for (line in lines) {
-            if (line.startsWith("diff --git ")) {
-                if (currentBlock.isNotEmpty()) {
-                    fileBlocks.add(currentBlock)
-                    currentBlock = mutableListOf()
-                }
-            }
-            currentBlock.add(line)
+    private fun fileSections(diff: String): List<Section> {
+        val starts = DiffSections.starts(diff)
+        if (starts.isEmpty()) return listOf(Section(emptyList(), diff))
+        val sections = mutableListOf<Section>()
+        if (starts[0] > 0 && diff.substring(0, starts[0]).isNotBlank()) {
+            sections.add(Section(emptyList(), diff.substring(0, starts[0])))
         }
-        if (currentBlock.isNotEmpty()) {
-            fileBlocks.add(currentBlock)
+        starts.forEachIndexed { index, start ->
+            val content = diff.substring(start, starts.getOrNull(index + 1) ?: diff.length)
+            sections.add(Section(listOfNotNull(DiffSections.fileFromHeader(content)), content))
         }
-
-        // Dosya filtreleme (Lock, binary vb. dosyaları ele)
-        val validBlocks = fileBlocks.filter { block ->
-            val firstLine = block.firstOrNull { it.startsWith("diff --git ") } ?: ""
-            val filePath = extractFilePath(firstLine)
-            !DiffFilter.shouldIgnoreFile(filePath)
-        }
-
-        if (validBlocks.isEmpty()) return emptyList()
-
-        val chunks = mutableListOf<DiffChunk>()
-        var currentChunkLines = mutableListOf<String>()
-        var currentChunkFiles = mutableListOf<String>()
-
-        for (block in validBlocks) {
-            val firstLine = block.firstOrNull { it.startsWith("diff --git ") } ?: ""
-            val filePath = extractFilePath(firstLine)
-
-            if (currentChunkLines.size + block.size > maxLinesPerChunk && currentChunkLines.isNotEmpty()) {
-                chunks.add(createChunk(chunks.size, currentChunkFiles, currentChunkLines))
-                currentChunkLines = mutableListOf()
-                currentChunkFiles = mutableListOf()
-            }
-
-            currentChunkFiles.add(filePath)
-            currentChunkLines.addAll(block)
-        }
-
-        if (currentChunkLines.isNotEmpty()) {
-            chunks.add(createChunk(chunks.size, currentChunkFiles, currentChunkLines))
-        }
-
-        val total = chunks.size
-        return chunks.mapIndexed { idx, c ->
-            c.copy(index = idx + 1, totalChunks = total)
-        }
+        return sections
     }
 
-    private fun createChunk(index: Int, fileNames: List<String>, lines: List<String>): DiffChunk {
-        val content = lines.joinToString("\n")
-        val isComplex = fileNames.any { path ->
-            val lower = path.lowercase()
-            COMPLEXITY_INDICATORS.any { lower.contains(it) } || lower.endsWith(".java") || lower.endsWith(".kt")
-        } || lines.size > 250
-
-        return DiffChunk(
-            index = index + 1,
-            totalChunks = 1,
-            fileNames = fileNames.distinct(),
-            content = content,
-            lineCount = lines.size,
-            isHighComplexity = isComplex
-        )
+    private fun splitOversized(section: Section, maxChunkChars: Int): List<Section> {
+        if (section.content.length <= maxChunkChars) return listOf(section)
+        val result = mutableListOf<Section>()
+        var cursor = 0
+        val content = section.content
+        while (cursor < content.length) {
+            var end = minOf(cursor + maxChunkChars, content.length)
+            if (end < content.length) {
+                val lastNewline = content.lastIndexOf('\n', end)
+                if (lastNewline > cursor) end = lastNewline + 1
+            }
+            result.add(Section(section.files, content.substring(cursor, end)))
+            cursor = end
+        }
+        return result
     }
 
-    private fun extractFilePath(diffGitLine: String): String {
-        val parts = diffGitLine.split(" ")
-        if (parts.size >= 4) {
-            val bPart = parts[3]
-            return if (bPart.startsWith("b/")) bPart.substring(2) else bPart
+    fun chunkDiff(diff: String, maxChunkChars: Int = 60_000, includeLineLocations: Boolean = false): List<DiffChunk> {
+        require(maxChunkChars > 0) { "maxChunkChars pozitif bir tam sayı olmalıdır." }
+        if (diff.isBlank()) return emptyList()
+        val filtered = DiffFilter.filterDiff(diff).filteredDiff
+        if (filtered.isBlank()) return emptyList()
+
+        val source = if (includeLineLocations) DiffLocations.annotateDiffLines(filtered) else filtered
+        val units = fileSections(source).flatMap { splitOversized(it, maxChunkChars) }
+
+        val groups = mutableListOf<Section>()
+        var currentFiles = mutableListOf<String>()
+        var current = StringBuilder()
+        for (unit in units) {
+            if (current.isNotEmpty() && current.length + unit.content.length > maxChunkChars) {
+                groups.add(Section(currentFiles, current.toString()))
+                currentFiles = mutableListOf()
+                current = StringBuilder()
+            }
+            current.append(unit.content)
+            currentFiles.addAll(unit.files)
         }
-        return "unknown"
+        if (current.isNotEmpty()) groups.add(Section(currentFiles, current.toString()))
+
+        return groups.mapIndexed { index, group ->
+            DiffChunk(index = index, total = groups.size, files = group.files.distinct(), content = group.content)
+        }
     }
 }
