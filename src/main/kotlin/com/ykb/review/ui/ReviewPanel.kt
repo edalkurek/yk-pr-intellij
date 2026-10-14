@@ -8,11 +8,10 @@ import com.intellij.openapi.progress.ProgressIndicator
 import com.intellij.openapi.progress.ProgressManager
 import com.intellij.openapi.progress.Task
 import com.intellij.openapi.project.Project
+import com.intellij.openapi.ui.Messages
 import com.intellij.openapi.vfs.LocalFileSystem
-import com.intellij.ui.JBColor
 import com.intellij.ui.components.*
 import com.intellij.ui.table.JBTable
-import java.awt.Component
 import com.intellij.util.ui.JBUI
 import com.ykb.review.ai.ReviewCoordinator
 import com.ykb.review.ai.ReviewFinding
@@ -20,11 +19,12 @@ import com.ykb.review.ai.ReviewResult
 import com.ykb.review.bitbucket.BitbucketClient
 import com.ykb.review.bitbucket.PullRequest
 import com.ykb.review.config.ReviewSettingsState
+import com.ykb.review.review.AutomaticReviewService
 import com.ykb.review.review.CommentFormatter
 import java.awt.BorderLayout
-import java.awt.Color
+import java.awt.Component
 import java.awt.Dimension
-import java.awt.Font
+import java.awt.FlowLayout
 import java.io.File
 import javax.swing.*
 import javax.swing.table.DefaultTableModel
@@ -43,7 +43,9 @@ class ReviewPanel(private val project: Project) : JPanel(BorderLayout()) {
     private val findingsTable = JBTable(findingsTableModel)
 
     private val publishBtn = JButton("Bitbucket'a Yorumları Gönder")
-    private val reviewBtn = JButton("AI İncelemesini Başlat")
+    private val reviewBtn = JButton("Seçili PR'ı İncele")
+    private val batchBtn = JButton("Açık PR'ları Şimdi Tara & İncele (Batch)")
+    private val reviewUrlBtn = JButton("URL ile PR İncele")
 
     init {
         border = JBUI.Borders.empty(8)
@@ -51,15 +53,22 @@ class ReviewPanel(private val project: Project) : JPanel(BorderLayout()) {
         // Üst Araç Çubuğu
         val topPanel = JPanel(BorderLayout(5, 5)).apply {
             border = JBUI.Borders.emptyBottom(8)
-            val infoPanel = JPanel().apply {
+            val infoPanel = JPanel(FlowLayout(FlowLayout.LEFT, 5, 0)).apply {
                 val state = ReviewSettingsState.instance
-                add(JBLabel("Bitbucket PR Review | Model Stratejisi: Hibrit"))
+                val autoStatus = if (state.automaticReviewEnabled) "Açık (${state.automaticReviewIntervalMinutes} dk)" else "Kapalı"
+                add(JBLabel("<html><b>Bitbucket Reviewer PR'larım</b> | Otomatik Tarama: <font color='gray'>$autoStatus</font></html>"))
             }
-            val btnPanel = JPanel().apply {
-                val refreshBtn = JButton("PR Listesini Yenile").apply {
-                    addActionListener { refreshPullRequests() }
+            val btnPanel = JPanel(FlowLayout(FlowLayout.RIGHT, 5, 0)).apply {
+                val refreshBtn = JButton("PR'larımı Getir").apply {
+                    addActionListener { refreshReviewerPullRequests() }
                 }
                 add(refreshBtn)
+                add(batchBtn.apply {
+                    addActionListener { runBatchReviewNow() }
+                })
+                add(reviewUrlBtn.apply {
+                    addActionListener { promptAndReviewUrl() }
+                })
                 add(reviewBtn.apply {
                     addActionListener { startReviewForSelectedPR() }
                     isEnabled = false
@@ -76,14 +85,14 @@ class ReviewPanel(private val project: Project) : JPanel(BorderLayout()) {
             if (idx >= 0 && idx < loadedPRs.size) {
                 activePR = loadedPRs[idx]
                 reviewBtn.isEnabled = true
-                statusLabel.text = "Seçili PR: #${activePR?.id} - ${activePR?.title}"
+                statusLabel.text = "Seçili PR: #${activePR?.id} - ${activePR?.title} [${activePR?.projectKey}/${activePR?.repositorySlug}]"
             } else {
                 reviewBtn.isEnabled = false
             }
         }
         val prScrollPane = JBScrollPane(prList).apply {
             preferredSize = Dimension(350, 150)
-            border = BorderFactory.createTitledBorder("Açık Pull Request'ler")
+            border = BorderFactory.createTitledBorder("Reviewer Olduğum Açık Pull Request'ler")
         }
 
         // Alt Sonuç Paneli (Tabbed: Bulgular, Özet)
@@ -132,35 +141,127 @@ class ReviewPanel(private val project: Project) : JPanel(BorderLayout()) {
         add(bottomPanel, BorderLayout.SOUTH)
     }
 
-    fun refreshPullRequests() {
+    /**
+     * Dashboard API'sinden reviewer olunan tüm açık PR'ları çeker
+     */
+    fun refreshReviewerPullRequests() {
         val state = ReviewSettingsState.instance
-        if (state.defaultProjectKey.isBlank() || state.defaultRepoSlug.isBlank()) {
-            statusLabel.text = "Lütfen önce Ayarlar menüsünden Proje ve Depo adını giriniz."
+        if (state.bitbucketToken.isBlank()) {
+            statusLabel.text = "Lütfen önce Ayarlar menüsünden Bitbucket Access Token giriniz."
+            Messages.showWarningDialog("Lütfen önce Bitbucket Access Token giriniz.", "Yetki Hatası")
             return
         }
 
-        statusLabel.text = "Bitbucket PR'ları getiriliyor..."
-        ProgressManager.getInstance().run(object : Task.Backgroundable(project, "PR Listesi Çekiliyor", false) {
+        statusLabel.text = "Reviewer olduğunuz PR'lar getiriliyor..."
+        ProgressManager.getInstance().run(object : Task.Backgroundable(project, "Reviewer PR Listesi Çekiliyor", false) {
             override fun run(indicator: ProgressIndicator) {
                 try {
                     val client = BitbucketClient()
-                    val prs = client.getOpenPullRequests(state.defaultProjectKey, state.defaultRepoSlug)
+                    val prs = client.listOpenPullRequestsForReviewer()
                     loadedPRs = prs
                     ApplicationManager.getApplication().invokeLater {
                         prListModel.clear()
                         for (pr in prs) {
-                            prListModel.addElement("#${pr.id} | ${pr.title} (${pr.author?.user?.displayName ?: "Bilinmiyor"})")
+                            val author = pr.author?.user?.displayName ?: "Bilinmiyor"
+                            val repoInfo = if (pr.repositorySlug.isNotBlank()) "[${pr.projectKey}/${pr.repositorySlug}] " else ""
+                            prListModel.addElement("#${pr.id} | $repoInfo${pr.title} ($author)")
                         }
-                        statusLabel.text = "${prs.size} adet açık PR yüklendi."
+                        statusLabel.text = "${prs.size} adet açık PR bulundu."
+                        if (prs.isEmpty()) {
+                            showNotification("Reviewer olduğunuz açık PR bulunamadı.", NotificationType.INFORMATION)
+                        }
                     }
                 } catch (e: Exception) {
                     ApplicationManager.getApplication().invokeLater {
                         statusLabel.text = "Hata: ${e.message}"
-                        showNotification("Bitbucket PR'lar yüklenemedi: ${e.message}", NotificationType.ERROR)
+                        showNotification("PR listesi çekilemedi: ${e.message}", NotificationType.ERROR)
                     }
                 }
             }
         })
+    }
+
+    private fun runBatchReviewNow() {
+        val autoService = AutomaticReviewService.getInstance(project)
+        statusLabel.text = "Açık PR'lar taranıyor ve inceleniyor..."
+        autoService.runScanAndReview(manual = true) { summary ->
+            ApplicationManager.getApplication().invokeLater {
+                statusLabel.text = summary
+                refreshReviewerPullRequests()
+            }
+        }
+    }
+
+    private fun promptAndReviewUrl() {
+        val url = Messages.showInputDialog(
+            project,
+            "Bitbucket PR URL'ini giriniz:\nÖrn: https://sdlc.yapikredi.com.tr/bitbucket/projects/PROJ/repos/repo/pull-requests/42",
+            "URL ile PR İncele",
+            Messages.getQuestionIcon()
+        ) ?: return
+
+        val parsed = parseBitbucketPrUrl(url.trim())
+        if (parsed == null) {
+            Messages.showErrorDialog("Geçersiz Bitbucket PR URL'i.", "Format Hatası")
+            return
+        }
+
+        val (projectKey, repoSlug, prId) = parsed
+        statusLabel.text = "URL İncelemesi: $projectKey/$repoSlug #$prId..."
+
+        ProgressManager.getInstance().run(object : Task.Backgroundable(project, "URL PR İncelemesi", true) {
+            override fun run(indicator: ProgressIndicator) {
+                try {
+                    val client = BitbucketClient()
+                    val rawDiff = client.getPullRequestDiff(projectKey, repoSlug, prId)
+                    val coordinator = ReviewCoordinator()
+                    val state = ReviewSettingsState.instance
+                    val repoInstructions = state.getEffectiveInstructions(repoSlug)
+
+                    val result = coordinator.executeReview(
+                        prTitle = "URL PR Review: $repoSlug #$prId",
+                        prDescription = "Manuel URL incelemesi",
+                        fromBranch = "source",
+                        toBranch = "target",
+                        rawDiff = rawDiff
+                    ) { step, frac ->
+                        indicator.text = step
+                        indicator.fraction = frac
+                    }
+
+                    lastResult = result
+                    ApplicationManager.getApplication().invokeLater {
+                        renderResult(result)
+                        publishBtn.isEnabled = true
+                        statusLabel.text = "URL İncelemesi tamamlandı. Risk: ${result.riskLevel.uppercase()}"
+                        showNotification("PR #$prId incelendi: ${result.findings.size} bulgu tespit edildi.", NotificationType.INFORMATION)
+                    }
+                } catch (e: Exception) {
+                    ApplicationManager.getApplication().invokeLater {
+                        statusLabel.text = "Hata: ${e.message}"
+                        showNotification("URL inceleme hatası: ${e.message}", NotificationType.ERROR)
+                    }
+                }
+            }
+        })
+    }
+
+    private fun parseBitbucketPrUrl(url: String): Triple<String, String, Long>? {
+        return try {
+            val u = java.net.URI(url)
+            val parts = u.path.split("/").filter { it.isNotBlank() }
+            val projIdx = parts.indexOf("projects")
+            val repoIdx = parts.indexOf("repos")
+            val prIdx = parts.indexOf("pull-requests")
+            if (projIdx != -1 && repoIdx != -1 && prIdx != -1 && parts.size > prIdx + 1) {
+                val projKey = parts[projIdx + 1]
+                val repoSlug = parts[repoIdx + 1]
+                val prId = parts[prIdx + 1].toLong()
+                Triple(projKey, repoSlug, prId)
+            } else null
+        } catch (e: Exception) {
+            null
+        }
     }
 
     private fun startReviewForSelectedPR() {
@@ -177,9 +278,12 @@ class ReviewPanel(private val project: Project) : JPanel(BorderLayout()) {
                 try {
                     indicator.text = "Bitbucket'tan diff çekiliyor..."
                     val client = BitbucketClient()
-                    val rawDiff = client.getPullRequestDiff(state.defaultProjectKey, state.defaultRepoSlug, pr.id)
+                    val projectKey = if (pr.projectKey.isNotBlank()) pr.projectKey else state.defaultProjectKey
+                    val repoSlug = if (pr.repositorySlug.isNotBlank()) pr.repositorySlug else state.defaultRepoSlug
 
+                    val rawDiff = client.getPullRequestDiff(projectKey, repoSlug, pr.id)
                     val coordinator = ReviewCoordinator()
+
                     val result = coordinator.executeReview(
                         prTitle = pr.title,
                         prDescription = pr.description,
@@ -253,20 +357,22 @@ class ReviewPanel(private val project: Project) : JPanel(BorderLayout()) {
             override fun run(indicator: ProgressIndicator) {
                 try {
                     val client = BitbucketClient()
-                    // 1. Genel Özet Yorumu
-                    indicator.text = "Genel özet yorumu gönderiliyor..."
-                    val generalComment = CommentFormatter.formatGeneralComment(result)
-                    client.postGeneralComment(state.defaultProjectKey, state.defaultRepoSlug, pr.id, generalComment)
+                    val projectKey = if (pr.projectKey.isNotBlank()) pr.projectKey else state.defaultProjectKey
+                    val repoSlug = if (pr.repositorySlug.isNotBlank()) pr.repositorySlug else state.defaultRepoSlug
 
-                    // 2. Satır içi bulgular
+                    indicator.text = "Genel özet yorumu gönderiliyor..."
+                    val marker = "<!-- YKB_AI_REVIEW: prId=${pr.id} commitHash=${pr.latestCommitHash} -->"
+                    val generalComment = "${CommentFormatter.formatGeneralComment(result)}\n\n$marker"
+                    client.postGeneralComment(projectKey, repoSlug, pr.id, generalComment)
+
                     indicator.text = "Satır içi yorumlar gönderiliyor..."
                     var publishedCount = 0
                     for (f in result.findings) {
                         if (f.line != null) {
                             val inlineText = CommentFormatter.formatInlineComment(f)
                             val ok = client.postInlineComment(
-                                projectKey = state.defaultProjectKey,
-                                repoSlug = state.defaultRepoSlug,
+                                projectKey = projectKey,
+                                repoSlug = repoSlug,
                                 pullRequestId = pr.id,
                                 filePath = f.file,
                                 lineNumber = f.line,

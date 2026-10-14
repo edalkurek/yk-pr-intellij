@@ -12,28 +12,47 @@ import com.intellij.util.xmlb.XmlSerializerUtil
 )
 class ReviewSettingsState : PersistentStateComponent<ReviewSettingsState> {
 
-    // Bitbucket Entegrasyon Ayarları
-    var bitbucketBaseUrl: String = "https://bitbucket.yapikredi.com.tr"
+    // Bitbucket Entegrasyon Ayarları (YKB Varsayılanları)
+    var bitbucketBaseUrl: String = "https://sdlc.yapikredi.com.tr/bitbucket"
     var bitbucketToken: String = ""
     var defaultProjectKey: String = ""
     var defaultRepoSlug: String = ""
 
-    // AI Servis Ayarları
-    var aiBaseUrl: String = "https://api.openai.com/v1"
+    // AI Servis Ayarları (YKB Bifrost Gateway & Yerel Modeller)
+    var aiBaseUrl: String = "https://bifrost-proxy-server-dsp-ddi.apps.lan-dev-dc1-ocp.yapikredi.com.tr/v1"
     var aiApiKey: String = ""
     
     // Model Katmanları (Tiered Engine)
     // Hızlı / Triage Modeli:
-    var fastModelName: String = "gpt-4o-mini"
-    // Güçlü / Karmaşık İş Mantığı & Güvenlik Modeli:
-    var complexModelName: String = "claude-3-5-sonnet-20241022"
+    var fastModelName: String = "cyankiwi/Qwen3.6-35B-A3B-AWQ-4bit"
+    // Güçlü / Derin Analiz Modeli:
+    var complexModelName: String = "openai/gpt-oss-120b"
     
-    // İnceleme Parametreleri
+    // Otomatik Arka Plan Review (Batch / Scheduler)
+    var automaticReviewEnabled: Boolean = false
+    var automaticReviewIntervalMinutes: Int = 5
+
+    // İnceleme Parametreleri & Repo Bazlı Talimatlar
     var minSeverity: String = "low" // low, medium, high
     var maxChunkLines: Int = 450
     var extraInstructions: String = ""
-    var autoPublishComments: Boolean = false
+    var repoInstructions: MutableMap<String, String> = mutableMapOf()
+    
+    // Zaten incelenen PR ve commit'lerin kaydı (Tekrar yorum atmamak için)
+    var lastReviewedCommits: MutableMap<String, String> = mutableMapOf()
+
+    var autoPublishComments: Boolean = true
     var maskSecretsInDiff: Boolean = true
+
+    fun getEffectiveInstructions(repoSlug: String): String {
+        val repoSpecific = repoInstructions[repoSlug]?.trim() ?: ""
+        val global = extraInstructions.trim()
+        return when {
+            repoSpecific.isNotBlank() && global.isNotBlank() -> "$global\n\n[Repo Özel Talimatı - $repoSlug]:\n$repoSpecific"
+            repoSpecific.isNotBlank() -> "[Repo Özel Talimatı - $repoSlug]:\n$repoSpecific"
+            else -> global
+        }
+    }
 
     override fun getState(): ReviewSettingsState {
         return this

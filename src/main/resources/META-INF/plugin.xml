@@ -7,10 +7,11 @@
         <h2>Bitbucket AI Pull Request & Local Code Reviewer</h2>
         <p>Bitbucket PR'larını ve yerel değişiklikleri doğrudan IntelliJ IDEA içerisinde yapay zeka ile denetleyen kurumsal kod inceleme eklentisi.</p>
         <ul>
+            <li><b>Reviewer PR Otomatik Tarama:</b> Depo veya proje kodu girmeden üzerinizdeki tüm açık PR'ları tek sorguda çeker.</li>
+            <li><b>Otomatik Zamanlayıcı (Auto Review):</b> Belirlenen aralıklarla (örn. 5 dakikada bir) açık PR'ları arka planda otomatik inceler ve yorum atar.</li>
+            <li><b>Repo Bazlı Özel Talimatlar:</b> Yetkili olduğunuz depoları listeleyip repo bazında özel AI inceleme direktifleri tanımlama.</li>
             <li><b>Çift Katmanlı Model Mimarisi:</b> Trivial kontroller için hızlı modeller, mimari/güvenlik/hata kontrolleri için güçlü modeller.</li>
-            <li><b>Doğrudan Bitbucket Entegrasyonu:</b> PR listesi, diff okuma ve otomatik satır içi (inline) yorum gönderme.</li>
             <li><b>Yerel Kod İnceleme:</b> Commit atmadan önce staged/uncommitted değişiklikleri inceleme.</li>
-            <li><b>Kişiselleştirilebilir Kurallar:</b> Proje bazlı ek denetim yönergeleri ve severity filtreleme.</li>
         </ul>
     ]]></description>
 
@@ -19,7 +20,10 @@
     <extensions defaultExtensionNs="com.intellij">
         <!-- Settings / Konfigürasyon Servisi -->
         <applicationService serviceImplementation="com.ykb.review.config.ReviewSettingsState"/>
-        
+
+        <!-- Otomatik Arka Plan Review Servisi -->
+        <projectService serviceImplementation="com.ykb.review.review.AutomaticReviewService"/>
+
         <!-- Settings Ekranı (Settings -> Tools -> YKB AI Review) -->
         <projectConfigurable
                 parentId="tools"
@@ -33,7 +37,11 @@
                     secondary="false"
                     factoryClass="com.ykb.review.ui.ReviewToolWindowFactory"
                     icon="AllIcons.Actions.Preview"/>
-        
+
+        <!-- Status Bar Widget -->
+        <statusBarWidgetFactory id="YkbReviewStatusBarWidget"
+                                implementation="com.ykb.review.ui.ReviewStatusBarWidgetFactory"/>
+
         <!-- Bildirim Grubu -->
         <notificationGroup id="YKB AI Review Notifications"
                            displayType="BALLOON"
@@ -47,7 +55,12 @@
             <action id="YKB.Review.TriggerPRReview"
                     class="com.ykb.review.actions.TriggerReviewAction"
                     text="Bitbucket PR İncelemesini Başlat"
-                    description="Seçili veya aktif PR için AI kod incelemesi çalıştırır">
+                    description="Reviewer olduğunuz açık PR'ları listeler ve inceleme panelini açar">
+            </action>
+            <action id="YKB.Review.ReviewUrlAction"
+                    class="com.ykb.review.actions.ReviewUrlAction"
+                    text="URL ile PR İncele"
+                    description="Bitbucket PR URL'i girerek tek tıkla inceleme başlatır">
             </action>
             <action id="YKB.Review.TriggerLocalReview"
                     class="com.ykb.review.actions.LocalReviewAction"

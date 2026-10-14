@@ -24,8 +24,9 @@ class BitbucketClient(
 
     private fun buildRequest(path: String): Request.Builder {
         val cleanPath = if (path.startsWith("/")) path else "/$path"
+        val fullUrl = if (path.startsWith("http")) path else "$baseUrl$cleanPath"
         val builder = Request.Builder()
-            .url("$baseUrl$cleanPath")
+            .url(fullUrl)
             .header("Accept", "application/json")
 
         if (token.isNotBlank()) {
@@ -35,7 +36,71 @@ class BitbucketClient(
     }
 
     /**
-     * Bitbucket Server / Data Center açık PR listesini döner
+     * Bitbucket Server global dashboard API'si üzerinden kullanıcının
+     * REVIEWER (İnceleyici) olarak atandığı TÜM AÇIK PR'ları çeker.
+     * Proje veya Depo adı girmeye gerek kalmaz.
+     */
+    @Throws(IOException::class)
+    fun listOpenPullRequestsForReviewer(): List<PullRequest> {
+        val allPrs = mutableListOf<PullRequest>()
+        var start = 0
+        do {
+            val path = "/rest/api/1.0/dashboard/pull-requests?role=REVIEWER&state=OPEN&limit=100&start=$start"
+            val request = buildRequest(path).get().build()
+
+            client.newCall(request).execute().use { response ->
+                if (!response.isSuccessful) {
+                    throw IOException("Reviewer PR listesi alınamadı (HTTP ${response.code}): ${response.message}")
+                }
+                val body = response.body?.string() ?: return allPrs
+                val parsed = gson.fromJson(body, PullRequestResponse::class.java)
+                allPrs.addAll(parsed.values)
+
+                if (parsed.isLastPage || parsed.nextPageStart == null || parsed.nextPageStart <= start) {
+                    return allPrs
+                }
+                start = parsed.nextPageStart
+            }
+        } while (true)
+    }
+
+    /**
+     * Kullanıcının erişim yetkisi olan tüm depoları listeler (Repo bazlı özel talimatlar için).
+     */
+    @Throws(IOException::class)
+    fun listRepositories(): List<BitbucketRepository> {
+        val allRepos = mutableListOf<BitbucketRepository>()
+        var start = 0
+        do {
+            val path = "/rest/api/1.0/repos?limit=100&start=$start"
+            val request = buildRequest(path).get().build()
+
+            client.newCall(request).execute().use { response ->
+                if (!response.isSuccessful) {
+                    throw IOException("Depolar listelenemedi (HTTP ${response.code}): ${response.message}")
+                }
+                val body = response.body?.string() ?: return allRepos
+                val parsed = gson.fromJson(body, RepositoryResponse::class.java)
+                for (ref in parsed.values) {
+                    allRepos.add(
+                        BitbucketRepository(
+                            slug = ref.slug,
+                            name = ref.name ?: ref.slug,
+                            projectKey = ref.project?.key ?: ""
+                        )
+                    )
+                }
+
+                if (parsed.isLastPage || parsed.nextPageStart == null || parsed.nextPageStart <= start) {
+                    return allRepos
+                }
+                start = parsed.nextPageStart
+            }
+        } while (true)
+    }
+
+    /**
+     * Belirli bir proje ve depodaki açık PR listesini döner
      */
     @Throws(IOException::class)
     fun getOpenPullRequests(projectKey: String, repoSlug: String): List<PullRequest> {
@@ -72,6 +137,24 @@ class BitbucketClient(
     }
 
     /**
+     * PR üzerindeki mevcut yorumları tarayarak bu commit için daha önce
+     * AI inceleme yorumu atılıp atılmadığını kontrol eder.
+     */
+    fun hasCommentMarker(projectKey: String, repoSlug: String, pullRequestId: Long, marker: String): Boolean {
+        return try {
+            val path = "/rest/api/1.0/projects/$projectKey/repos/$repoSlug/pull-requests/$pullRequestId/comments?limit=100"
+            val request = buildRequest(path).get().build()
+            client.newCall(request).execute().use { response ->
+                if (!response.isSuccessful) return false
+                val body = response.body?.string() ?: return false
+                body.contains(marker)
+            }
+        } catch (e: Exception) {
+            false
+        }
+    }
+
+    /**
      * PR genel yorumu gönderir
      */
     @Throws(IOException::class)
@@ -102,7 +185,7 @@ class BitbucketClient(
         pullRequestId: Long,
         filePath: String,
         lineNumber: Int,
-        side: String, // "new" -> ADDED, "old" -> REMOVED
+        side: String,
         comment: String
     ): Boolean {
         val path = "/rest/api/1.0/projects/$projectKey/repos/$repoSlug/pull-requests/$pullRequestId/comments"
@@ -116,12 +199,7 @@ class BitbucketClient(
             .build()
 
         client.newCall(request).execute().use { response ->
-            if (!response.isSuccessful) {
-                // Inline yorum hatasında log veya false dön
-                System.err.println("Satır içi yorum gönderilemedi ($filePath:$lineNumber): ${response.code} ${response.message}")
-                return false
-            }
-            return true
+            return response.isSuccessful
         }
     }
 }
