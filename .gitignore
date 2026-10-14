@@ -7,3 +7,5 @@ out/
 *.ipr
 *.hprof
 *.log
+bin/
+
