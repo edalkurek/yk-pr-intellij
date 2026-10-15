@@ -68,7 +68,7 @@ Eklentiyi şirket içinde veya IDE'ye `Install Plugin from Disk...` ile kurmak �
 ```bash
 ./gradlew buildPlugin
 ```
-Üretilen paket: `build/distributions/yk-pr-intellij-1.0.0.zip`
+Üretilen paket: `build/distributions/yk-pr-intellij-1.3.0.zip`
 
 ---
 

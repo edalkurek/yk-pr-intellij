@@ -55,4 +55,44 @@ class FindingsPresenterTest {
         val md = FindingsPresenter.toMarkdown(f("./src/A.kt", "high", 12))
         assertTrue(md.startsWith("**Yüksek · Hata** — `src/A.kt:12 (yeni)`"))
     }
+
+    @Test
+    fun `onem gruplamasi yuksekten dusuge ve dosya-satir sirasina gore`() {
+        val groups = FindingsPresenter.groupBySeverity(
+            listOf(f("b.kt", "low", 1), f("b.kt", "high", 9), f("a.kt", "high", 20), f("a.kt", "high", 3)),
+        )
+        assertEquals(listOf("high", "low"), groups.map { it.key })
+        assertEquals(listOf("a.kt" to 3, "a.kt" to 20, "b.kt" to 9), groups[0].findings.map { it.file to it.line })
+    }
+
+    @Test
+    fun `tur gruplamasi tanimli tur sirasini izler`() {
+        val groups = FindingsPresenter.groupByType(
+            listOf(f("a", "low", type = "test"), f("a", "high", type = "security"), f("a", "low", type = "bug"), f("a", "low", type = "other")),
+        )
+        assertEquals(listOf("bug", "security", "test", "other"), groups.map { it.key })
+    }
+
+    @Test
+    fun `onem sayilari sifirlar dahil sirali doner`() {
+        val counts = FindingsPresenter.severityCounts(listOf(f("a", "low"), f("a", "low"), f("a", "high")))
+        assertEquals(listOf("high" to 1, "medium" to 0, "low" to 2), counts.toList())
+    }
+
+    @Test
+    fun `goreli zaman metni`() {
+        val now = 10L * 365 * 24 * 60 * 60_000
+        assertEquals("", FindingsPresenter.relativeTime(null, now))
+        assertEquals("az önce", FindingsPresenter.relativeTime(now - 10_000, now))
+        assertEquals("5 dk önce", FindingsPresenter.relativeTime(now - 5 * 60_000, now))
+        assertEquals("3 saat önce", FindingsPresenter.relativeTime(now - 3 * 60 * 60_000, now))
+        assertEquals("2 gün önce", FindingsPresenter.relativeTime(now - 2L * 24 * 60 * 60_000, now))
+    }
+
+    @Test
+    fun `toplu markdown baslik ve ayiraclar icerir`() {
+        val md = FindingsPresenter.toMarkdown(listOf(f("a.kt", "high", 1), f("b.kt", "low", 2)), "PR #7")
+        assertTrue(md.startsWith("### PR #7\n\n"))
+        assertEquals(1, Regex("\n---\n").findAll(md).count())
+    }
 }

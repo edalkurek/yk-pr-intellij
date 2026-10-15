@@ -38,6 +38,9 @@ class ReviewSettingsConfigurable : Configurable {
             ui.extraInstructionsArea.text.trim() != s.extraInstructions ||
             ui.maskSecretsCheck.isSelected != s.maskSecretsInDiff ||
             ui.disableTlsCheck.isSelected != s.disableTlsVerification ||
+            ui.publicationModeCombo.selectedItem != s.publicationMode ||
+            ui.openDiffAfterReviewCheck.isSelected != s.openDiffAfterReview ||
+            ui.showInlaysCheck.isSelected != s.showFindingInlays ||
             ui.repoInstructions() != s.repoInstructions.filterValues { it.isNotBlank() }
     }
 
@@ -75,6 +78,9 @@ class ReviewSettingsConfigurable : Configurable {
         s.extraInstructions = ui.extraInstructionsArea.text.trim()
         s.maskSecretsInDiff = ui.maskSecretsCheck.isSelected
         s.disableTlsVerification = ui.disableTlsCheck.isSelected
+        s.publicationMode = (ui.publicationModeCombo.selectedItem as? String) ?: ReviewSettingsState.PUBLICATION_ASK
+        s.openDiffAfterReview = ui.openDiffAfterReviewCheck.isSelected
+        s.showFindingInlays = ui.showInlaysCheck.isSelected
         s.repoInstructions = ui.repoInstructions().toMutableMap()
 
         // Gizli bilgiler yalnızca yeni değer yazıldıysa güncellenir.
@@ -99,8 +105,12 @@ class ReviewSettingsConfigurable : Configurable {
         ui.extraInstructionsArea.text = s.extraInstructions
         ui.maskSecretsCheck.isSelected = s.maskSecretsInDiff
         ui.disableTlsCheck.isSelected = s.disableTlsVerification
+        ui.publicationModeCombo.selectedItem = s.publicationMode
+        ui.openDiffAfterReviewCheck.isSelected = s.openDiffAfterReview
+        ui.showInlaysCheck.isSelected = s.showFindingInlays
         ui.setRepoInstructions(s.repoInstructions.filterValues { it.isNotBlank() })
         ui.updateSecretHints(s)
+        ui.syncDependentState()
     }
 
     override fun disposeUIResources() {

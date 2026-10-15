@@ -50,6 +50,13 @@ class ReviewCoordinator(private val settings: ReviewSettingsState = ReviewSettin
         return client.hasComment(pr.ref) { CommentFormatter.matchesExistingReview(it, pr.ref.pullRequestId, commit) }
     }
 
+    /** Ağ çağrısı yapmadan: bu IDE son commit için yorum yayınladı mı? (PR listesindeki rozet için.) */
+    fun isReviewedLocally(pr: PullRequest): Boolean {
+        val commit = pr.latestCommitHash
+        if (commit.isBlank()) return false
+        return settings.isPublished(reviewKey(pr.ref, commit)) || settings.legacyReviewedCommit(pr.ref) == commit
+    }
+
     fun review(
         ref: PullRequestRef,
         pullRequest: PullRequest?,

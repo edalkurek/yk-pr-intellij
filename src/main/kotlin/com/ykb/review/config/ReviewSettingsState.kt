@@ -51,6 +51,16 @@ class ReviewSettingsState : PersistentStateComponent<ReviewSettingsState> {
     /** Kurumsal ortamda sertifika doğrulamasını tamamen kapatır (VS Code eklentisinin varsayılan davranışı). */
     var disableTlsVerification: Boolean = false
 
+    // Arayüz tercihleri
+    /** İnceleme sonucunun işlenme biçimi: "ask" (her seferinde sor) | "ide" (yalnızca IDE) | "publish" (Bitbucket'a yaz). */
+    var publicationMode: String = PUBLICATION_ASK
+
+    /** PR incelemesi bitince değişiklikleri diff görüntüleyicide otomatik aç. */
+    var openDiffAfterReview: Boolean = true
+
+    /** Editör ve diff'te bulgu satırlarının sonunda kısa açıklama (inlay) göster. */
+    var showFindingInlays: Boolean = true
+
     /** PasswordSafe'e erişmeden UI'da "kayıtlı" bilgisini göstermek için. */
     var bitbucketTokenStored: Boolean = false
     var modelApiKeyStored: Boolean = false
@@ -115,6 +125,11 @@ class ReviewSettingsState : PersistentStateComponent<ReviewSettingsState> {
         return null
     }
 
+    /** Token kayıtlı ve URL dolu mu? (Panel boş durumunda "Ayarları Aç" yönlendirmesi için; PasswordSafe'e erişmez.) */
+    @get:Transient
+    val isBitbucketConfigured: Boolean
+        get() = bitbucketBaseUrl.isNotBlank() && (bitbucketTokenStored || bitbucketToken.isNotBlank())
+
     override fun getState(): ReviewSettingsState = this
 
     override fun loadState(state: ReviewSettingsState) {
@@ -127,6 +142,9 @@ class ReviewSettingsState : PersistentStateComponent<ReviewSettingsState> {
         const val DEFAULT_FAST_MODEL = "cyankiwi/Qwen3.6-35B-A3B-AWQ-4bit"
         const val DEFAULT_COMPLEX_MODEL = "openai/gpt-oss-120b"
         const val DEFAULT_MAX_CHUNK_CHARS = 60_000
+        const val PUBLICATION_ASK = "ask"
+        const val PUBLICATION_IDE = "ide"
+        const val PUBLICATION_PUBLISH = "publish"
         val PRESET_MODELS = listOf(DEFAULT_FAST_MODEL, DEFAULT_COMPLEX_MODEL)
         private const val MAX_PUBLISHED_KEYS = 5000
 

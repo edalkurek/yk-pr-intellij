@@ -16,6 +16,21 @@
         </ul>
     ]]></description>
 
+    <change-notes><![CDATA[
+        <h3>1.3.0 — Arayüz yenilemesi</h3>
+        <ul>
+            <li><b>Bulgular PR diff'inde:</b> AI bulguları diff görüntüleyicide ilgili satırda gutter ikonu, alt çizgi ve satır sonu açıklamasıyla görünür; ikona tıklamak bulguyu panelde seçer.</li>
+            <li><b>Yayın öncesi seçim:</b> Bulgular yayından hariç tutulabilir (Boşluk); göndermeden önce özet onayı alınır.</li>
+            <li><b>Yeni ana panel:</b> İkonlu araç çubuğu, iki satırlı PR listesi (hızlı arama, repo filtresi, "AI incelendi" rozeti), risk rozetli başlık bandı, inceleme geçmişi, panel içi ilerleme ve iptal.</li>
+            <li><b>Bulgular ağacı:</b> Önceki/sonraki bulgu (Ctrl+Alt+↑/↓), dosya/önem/tür gruplama, tümünü aç/kapat, toplu Markdown kopyalama, kod parçası önizlemesi.</li>
+            <li><b>HTML özet:</b> Risk rozeti, tıklanabilir önem sayıları, test önerileri kontrol listesi.</li>
+            <li><b>Editor:</b> PR bulguları yalnızca yerel HEAD aynı commit'teyse işaretlenir (yanlış satır sorunu giderildi); renkler panel ile tutarlı.</li>
+            <li><b>Bildirimler:</b> "Bulguları Göster", "Diff'i Aç", "Bitbucket'ta Aç", "Tekrar Dene" aksiyonları.</li>
+            <li><b>Ayarlar:</b> Satır içi bağlantı testi sonuçları, repo kuralları için +/−/düzenle araç çubuğu, yayın tercihini hatırlama, diff'i otomatik açma ve satır sonu açıklaması seçenekleri.</li>
+            <li>Özel eklenti ikonları; URL diyaloğu panodaki PR bağlantısıyla otomatik dolar.</li>
+        </ul>
+    ]]></change-notes>
+
     <depends>com.intellij.modules.platform</depends>
     <depends>com.intellij.modules.vcs</depends>
 
@@ -34,7 +49,10 @@
                     anchor="right"
                     secondary="false"
                     factoryClass="com.ykb.review.ui.ReviewToolWindowFactory"
-                    icon="AllIcons.Actions.Preview"/>
+                    icon="com.ykb.review.ui.ReviewIcons.ToolWindow"/>
+
+        <!-- PR diff görüntüleyicide AI bulgularını satır üzerinde gösterir -->
+        <diff.DiffExtension implementation="com.ykb.review.ui.FindingsDiffExtension"/>
 
         <statusBarWidgetFactory id="YkbReviewStatusBarWidget"
                                 implementation="com.ykb.review.ui.ReviewStatusBarWidgetFactory"/>

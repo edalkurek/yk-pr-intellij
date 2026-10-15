@@ -76,7 +76,11 @@ class ReviewStatusBarWidget(private val project: Project) : CustomStatusBarWidge
             enabled -> AllIcons.Actions.Execute
             else -> AllIcons.Actions.Suspend
         }
-        label.text = "Auto PR Review"
+        label.text = when {
+            auto.isRunning -> "AI Review: taranıyor…"
+            enabled -> "AI Review"
+            else -> "AI Review: kapalı"
+        }
         val status = when {
             auto.isRunning -> "Açık PR'lar taranıyor ve inceleniyor…"
             enabled -> "Etkin (her ${settings.automaticReviewIntervalMinutes} dakikada bir)"

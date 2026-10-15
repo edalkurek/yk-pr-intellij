@@ -41,6 +41,55 @@ object FindingsPresenter {
     fun filter(findings: List<ReviewFinding>, severities: Set<String>, type: String?): List<ReviewFinding> =
         findings.filter { it.severity in severities && (type == null || it.type == type) }
 
+    /** Bulgular ağacının gruplama kipi. */
+    enum class GroupBy(val label: String) { FILE("Dosya"), SEVERITY("Önem"), TYPE("Tür") }
+
+    /** Dosya dışı gruplama: anahtar = önem veya tür; grup içinde dosya ve satıra göre sıralı. */
+    data class KeyGroup(val key: String, val findings: List<ReviewFinding>)
+
+    private val byFileAndLine = compareBy<ReviewFinding>({ normalizePath(it.file) }, { it.line ?: Int.MAX_VALUE })
+
+    fun groupBySeverity(findings: List<ReviewFinding>): List<KeyGroup> =
+        findings.groupBy { it.severity }
+            .map { (severity, items) -> KeyGroup(severity, items.sortedWith(byFileAndLine)) }
+            .sortedByDescending { ReviewConstants.riskScore(it.key) }
+
+    fun groupByType(findings: List<ReviewFinding>): List<KeyGroup> =
+        findings.groupBy { it.type }
+            .map { (type, items) ->
+                KeyGroup(type, items.sortedWith(compareByDescending<ReviewFinding> { ReviewConstants.riskScore(it.severity) }.then(byFileAndLine)))
+            }
+            .sortedBy { ReviewConstants.FINDING_TYPES.indexOf(it.key).let { i -> if (i < 0) Int.MAX_VALUE else i } }
+
+    /** high → medium → low sırasıyla sayılar (sıfırlar dahil). */
+    fun severityCounts(findings: List<ReviewFinding>): LinkedHashMap<String, Int> =
+        linkedMapOf("high" to 0, "medium" to 0, "low" to 0).apply {
+            findings.forEach { f -> this[f.severity] = (this[f.severity] ?: 0) + 1 }
+        }
+
+    /** "az önce", "5 dk önce", "3 saat önce", "2 gün önce" ... */
+    fun relativeTime(epochMillis: Long?, now: Long = System.currentTimeMillis()): String {
+        if (epochMillis == null || epochMillis <= 0) return ""
+        val minutes = ((now - epochMillis) / 60_000).coerceAtLeast(0)
+        return when {
+            minutes < 1 -> "az önce"
+            minutes < 60 -> "$minutes dk önce"
+            minutes < 60 * 24 -> "${minutes / 60} saat önce"
+            minutes < 60 * 24 * 30 -> "${minutes / (60 * 24)} gün önce"
+            minutes < 60 * 24 * 365 -> "${minutes / (60 * 24 * 30)} ay önce"
+            else -> "${minutes / (60 * 24 * 365)} yıl önce"
+        }
+    }
+
+    /** Birden fazla bulguyu tek Markdown belgesi olarak biçimlendirir. */
+    fun toMarkdown(findings: List<ReviewFinding>, title: String? = null): String = buildString {
+        if (!title.isNullOrBlank()) append("### ").append(title).append("\n\n")
+        findings.forEachIndexed { i, f ->
+            if (i > 0) append("\n\n---\n\n")
+            append(toMarkdown(f))
+        }
+    }
+
     /** Ağaçta tek satırlık özet için ilk cümle / satır. */
     fun headline(message: String, maxLength: Int = 140): String {
         val firstLine = message.lineSequence().map { it.trim() }.firstOrNull { it.isNotEmpty() && !it.startsWith("```") }.orEmpty()

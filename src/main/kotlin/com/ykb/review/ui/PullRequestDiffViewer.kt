@@ -22,12 +22,14 @@ import com.intellij.openapi.vcs.changes.actions.diff.ChangeDiffRequestProducer
 import com.intellij.openapi.vcs.changes.ui.ChangeDiffRequestChain
 import com.intellij.openapi.vcs.history.VcsRevisionNumber
 import com.intellij.vcsUtil.VcsUtil
+import com.ykb.review.ai.ReviewFinding
 import com.ykb.review.bitbucket.BitbucketClient
 import com.ykb.review.bitbucket.PullRequestChanges
 import com.ykb.review.bitbucket.PullRequestFileChange
 import com.ykb.review.bitbucket.PullRequestRef
 import com.ykb.review.bitbucket.RemoteMatcher
 import com.ykb.review.local.LocalGit
+import com.ykb.review.review.FindingsPresenter
 import com.ykb.review.util.safeMessage
 import java.io.File
 
@@ -40,7 +42,10 @@ object PullRequestDiffViewer {
     /** Açılışta seçilecek dosya ve (varsa) kaydırılacak satır. side: "old" | "new" | null */
     data class Focus(val path: String, val line: Int? = null, val side: String? = null)
 
-    fun show(project: Project, ref: PullRequestRef, focus: Focus? = null) {
+    /** Diff isteğine eklenen, o dosyaya ait AI bulguları ([FindingsDiffExtension] okur). */
+    val FINDINGS_KEY: Key<List<ReviewFinding>> = Key.create("YKB.Review.DiffFindings")
+
+    fun show(project: Project, ref: PullRequestRef, focus: Focus? = null, findings: List<ReviewFinding> = emptyList()) {
         ProgressManager.getInstance().run(object : Task.Backgroundable(project, "PR #${ref.pullRequestId} değişiklikleri yükleniyor…", true) {
             private var result: PullRequestChanges? = null
             private var changes: List<Change> = emptyList()
@@ -74,13 +79,18 @@ object PullRequestDiffViewer {
                     info.files.indexOfFirst { it.path == path || it.srcPath == path }.takeIf { it >= 0 }
                         ?: info.files.indexOfFirst { it.path.endsWith("/$path") }.takeIf { it >= 0 }
                 }
+                val findingsByPath = findings.groupBy { FindingsPresenter.normalizePath(it.file) }
                 val producers = changes.mapIndexedNotNull { index, change ->
-                    val context = if (index == focusIndex && focus?.line != null) {
+                    val context = mutableMapOf<Key<*>, Any>()
+                    if (index == focusIndex && focus?.line != null) {
                         val side = if (focus.side == "old" || change.afterRevision == null) Side.LEFT else Side.RIGHT
-                        mapOf<Key<*>, Any>(DiffUserDataKeys.SCROLL_TO_LINE to IdeaPair.create(side, (focus.line - 1).coerceAtLeast(0)))
-                    } else {
-                        emptyMap()
+                        context[DiffUserDataKeys.SCROLL_TO_LINE] = IdeaPair.create(side, (focus.line - 1).coerceAtLeast(0))
                     }
+                    val file = info.files.getOrNull(index)
+                    val fileFindings = file?.let { f ->
+                        findingsByPath[f.path].orEmpty() + (f.srcPath?.takeIf { it != f.path }?.let { findingsByPath[it] }.orEmpty())
+                    }.orEmpty()
+                    if (fileFindings.isNotEmpty()) context[FINDINGS_KEY] = fileFindings
                     ChangeDiffRequestProducer.create(project, change, context)
                 }
                 if (producers.isEmpty()) {
@@ -135,7 +145,8 @@ object PullRequestDiffViewer {
         if (localRoot != null) VcsUtil.getFilePath(File(localRoot, path), false)
         else VcsUtil.getFilePath("/${ref.projectKey}/${ref.repositorySlug}/$path", false)
 
-    private fun findLocalRoot(project: Project, ref: PullRequestRef): String? {
+    /** Projede bu PR'ın deposuna (remote eşleşmesiyle) karşılık gelen git kökü. Arka plan thread'inde çağrılmalı. */
+    internal fun findLocalRoot(project: Project, ref: PullRequestRef): String? {
         val roots = ProjectLevelVcsManager.getInstance(project).allVcsRoots
             .filter { it.vcs?.name.equals("Git", ignoreCase = true) }
             .map { it.path.path }
