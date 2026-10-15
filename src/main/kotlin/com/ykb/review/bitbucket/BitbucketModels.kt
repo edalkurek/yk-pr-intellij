@@ -46,3 +46,26 @@ data class InlineCommentLocation(
 )
 
 class BitbucketHttpException(val status: Int, message: String) : IOException(message)
+
+class FileTooLargeException(val path: String, val limitBytes: Int) :
+    IOException("Dosya çok büyük (> ${limitBytes / (1024 * 1024)} MB): $path")
+
+/** PR'daki tek dosya değişikliği. type: ADD | MODIFY | DELETE | MOVE | COPY | UNKNOWN */
+data class PullRequestFileChange(
+    val path: String,
+    val srcPath: String?,
+    val type: String,
+)
+
+/**
+ * PR değişiklik özeti. [toHash] Bitbucket'ın karşılaştırma tabanı (hedef dalla ortak ata), [fromHash] PR'ın son commit'i.
+ * Fork PR'larında kaynak dosyalar [sourceProjectKey]/[sourceRepositorySlug] deposundan okunabilir.
+ */
+data class PullRequestChanges(
+    val fromHash: String,
+    val toHash: String,
+    val sourceProjectKey: String,
+    val sourceRepositorySlug: String,
+    val files: List<PullRequestFileChange>,
+    val truncated: Boolean,
+)

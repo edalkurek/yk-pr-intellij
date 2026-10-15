@@ -16,6 +16,7 @@ import com.ykb.review.util.str
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import okhttp3.RequestBody.Companion.toRequestBody
+import okhttp3.Response
 import java.net.URLEncoder
 import java.nio.charset.StandardCharsets
 
@@ -89,6 +90,73 @@ class BitbucketClient(
     fun getLatestCommitHash(ref: PullRequestRef): String =
         JsonParser.parseString(send(pullRequestUrl(ref))).obj().get("fromRef").obj().str("latestCommit")
 
+    /** PR'da değişen dosyalar ve karşılaştırma commit'leri (yerel diff görüntüleyici için). */
+    fun getPullRequestChanges(ref: PullRequestRef, maxFiles: Int = MAX_CHANGED_FILES): PullRequestChanges {
+        val pr = JsonParser.parseString(send(pullRequestUrl(ref))).obj()
+        val fromRef = pr.get("fromRef").obj()
+        val sourceRepo = fromRef.get("repository").obj()
+        var fromHash = fromRef.str("latestCommit")
+        var toHash = ""
+        val files = mutableListOf<PullRequestFileChange>()
+        var truncated = false
+        var start = 0L
+        while (true) {
+            val page = JsonParser.parseString(send("${pullRequestUrl(ref)}/changes?limit=500&start=$start")).obj()
+            if (page.str("fromHash").isNotEmpty()) fromHash = page.str("fromHash")
+            if (page.str("toHash").isNotEmpty()) toHash = page.str("toHash")
+            for (value in page.get("values").arr()) {
+                val item = value.obj()
+                val nodeType = item.str("nodeType")
+                if (nodeType.isNotEmpty() && !nodeType.equals("FILE", ignoreCase = true)) continue
+                val path = item.get("path").obj().str("toString")
+                if (path.isEmpty()) continue
+                if (files.size >= maxFiles) {
+                    truncated = true
+                    break
+                }
+                files.add(
+                    PullRequestFileChange(
+                        path = path,
+                        srcPath = item.get("srcPath").obj().str("toString").ifEmpty { null },
+                        type = item.str("type").uppercase().ifEmpty { "MODIFY" },
+                    )
+                )
+            }
+            if (truncated || page.bool("isLastPage")) break
+            val next = page.long("nextPageStart") ?: break
+            if (next <= start) break
+            start = next
+        }
+        if (toHash.isEmpty()) toHash = pr.get("toRef").obj().str("latestCommit")
+        return PullRequestChanges(
+            fromHash = fromHash,
+            toHash = toHash,
+            sourceProjectKey = sourceRepo.get("project").obj().str("key").ifEmpty { ref.projectKey },
+            sourceRepositorySlug = sourceRepo.str("slug").ifEmpty { ref.repositorySlug },
+            files = files,
+            truncated = truncated,
+        )
+    }
+
+    /**
+     * Dosyanın belirli commit'teki ham içeriği. Dosya o commit'te yoksa null.
+     * @throws FileTooLargeException içerik [maxBytes] sınırını aşarsa
+     */
+    fun getRawFile(projectKey: String, repositorySlug: String, path: String, commit: String, maxBytes: Int = MAX_RAW_BYTES): ByteArray? {
+        val encodedPath = path.split('/').filter { it.isNotEmpty() }.joinToString("/") { encode(it) }
+        val url = "$apiBaseUrl/projects/${encode(projectKey)}/repos/${encode(repositorySlug)}/raw/$encodedPath?at=${encode(commit)}"
+        return try {
+            exchange(url, "*/*", null) { response ->
+                val stream = response.body?.byteStream() ?: return@exchange ByteArray(0)
+                val bytes = stream.readNBytes(maxBytes + 1)
+                if (bytes.size > maxBytes) throw FileTooLargeException(path, maxBytes)
+                bytes
+            }
+        } catch (e: BitbucketHttpException) {
+            if (e.status == 404) null else throw e
+        }
+    }
+
     /**
      * PR'daki tüm yorumları (yanıtlar dahil) gezer. Server'ın GET /comments uç noktası dosya yolu istediği için
      * PR geneli yorumlar /activities üzerinden okunur.
@@ -150,7 +218,10 @@ class BitbucketClient(
         }
     }
 
-    private fun send(url: String, accept: String = "application/json", jsonBody: String? = null): String {
+    private fun send(url: String, accept: String = "application/json", jsonBody: String? = null): String =
+        exchange(url, accept, jsonBody) { it.body?.string().orEmpty() }
+
+    private fun <T> exchange(url: String, accept: String, jsonBody: String?, read: (Response) -> T): T {
         if (Http.origin(url) != allowedOrigin) {
             throw IllegalStateException("Bitbucket kimlik bilgisi beklenmeyen bir adrese gönderilmeyecek.")
         }
@@ -164,10 +235,11 @@ class BitbucketClient(
                 .header("X-Atlassian-Token", "no-check")
             if (jsonBody != null) builder.post(jsonBody.toRequestBody(Http.JSON)) else builder.get()
 
-            val (code, text, retryAfter) = Http.execute(http, builder.build()).use {
-                Triple(it.code, it.body?.string().orEmpty(), it.header("Retry-After"))
-            }
-            if (code in 200..299) return text
+            val response = Http.execute(http, builder.build())
+            val code = response.code
+            if (code in 200..299) return response.use(read)
+            val text = response.use { it.body?.string().orEmpty() }
+            val retryAfter = response.header("Retry-After")
             if (Http.isRetryableStatus(code) && attempt < Http.MAX_RETRY_ATTEMPTS) {
                 Cancellation.sleep(Http.backoffDelay(attempt, Http.parseRetryAfter(retryAfter)))
                 attempt++
@@ -221,6 +293,8 @@ class BitbucketClient(
 
     companion object {
         private val API_SUFFIX = Regex("/rest/api/(?:latest|\\d+(?:\\.\\d+)*)$", RegexOption.IGNORE_CASE)
+        const val MAX_CHANGED_FILES = 1000
+        const val MAX_RAW_BYTES = 5 * 1024 * 1024
 
         fun fromSettings(): BitbucketClient {
             val settings = ReviewSettingsState.instance

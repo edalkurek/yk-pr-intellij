@@ -1,5 +1,6 @@
 package com.ykb.review.ui
 
+import com.intellij.ide.BrowserUtil
 import com.intellij.openapi.Disposable
 import com.intellij.openapi.application.ApplicationManager
 import com.intellij.openapi.fileEditor.OpenFileDescriptor
@@ -13,7 +14,6 @@ import com.intellij.ui.components.JBList
 import com.intellij.ui.components.JBScrollPane
 import com.intellij.ui.components.JBTabbedPane
 import com.intellij.ui.components.JBTextArea
-import com.intellij.ui.table.JBTable
 import com.intellij.util.ui.JBUI
 import com.ykb.review.ai.ReviewFinding
 import com.ykb.review.bitbucket.PullRequest
@@ -30,10 +30,12 @@ import java.nio.file.Paths
 import javax.swing.BorderFactory
 import javax.swing.DefaultListModel
 import javax.swing.JButton
+import javax.swing.JMenuItem
 import javax.swing.JPanel
+import javax.swing.JPopupMenu
 import javax.swing.JSplitPane
 import javax.swing.ListSelectionModel
-import javax.swing.table.DefaultTableModel
+import javax.swing.SwingUtilities
 
 class ReviewPanel(private val project: Project, parentDisposable: Disposable) : JPanel(BorderLayout()) {
 
@@ -42,19 +44,24 @@ class ReviewPanel(private val project: Project, parentDisposable: Disposable) : 
     private val prListModel = DefaultListModel<String>()
     private val prList = JBList(prListModel)
     private var loadedPRs: List<PullRequest> = emptyList()
-    private var shownFindings: List<ReviewFinding> = emptyList()
+    private var renderedFindings: List<ReviewFinding>? = null
 
     private val autoStatusLabel = JBLabel()
     private val statusLabel = JBLabel("Hazır.")
     private val summaryArea = JBTextArea()
-    private val findingsTableModel = object : DefaultTableModel(arrayOf("Seviye", "Tür", "Dosya", "Satır", "Mesaj", "Öneri"), 0) {
-        override fun isCellEditable(row: Int, column: Int) = false
-    }
-    private val findingsTable = JBTable(findingsTableModel)
+    private val findingsView = FindingsView(object : FindingsView.Actions {
+        override fun activate(finding: ReviewFinding) = navigateTo(finding)
+        override fun openInEditor(finding: ReviewFinding) {
+            openFileInEditor(finding)
+        }
+        override fun canShowInDiff(): Boolean = session.current?.outcome != null
+        override fun showInDiff(path: String, finding: ReviewFinding?) = showFindingInDiff(path, finding)
+    })
     private val tabs = JBTabbedPane()
 
     private val refreshBtn = JButton("PR'larımı Getir")
     private val reviewBtn = JButton("Seçili PR'ı İncele")
+    private val changesBtn = JButton("Değişiklikleri Göster")
     private val reviewUrlBtn = JButton("URL ile PR İncele")
     private val localBtn = JButton("Yerel Değişiklikleri İncele")
     private val batchBtn = JButton("Açık PR'ları Şimdi Tara")
@@ -68,13 +75,16 @@ class ReviewPanel(private val project: Project, parentDisposable: Disposable) : 
             border = JBUI.Borders.emptyBottom(8)
             add(JPanel(FlowLayout(FlowLayout.LEFT, 5, 0)).apply { add(autoStatusLabel) }, BorderLayout.NORTH)
             add(JPanel(FlowLayout(FlowLayout.LEFT, 5, 0)).apply {
-                add(refreshBtn); add(reviewBtn); add(reviewUrlBtn); add(localBtn); add(batchBtn)
+                add(refreshBtn); add(reviewBtn); add(changesBtn); add(reviewUrlBtn); add(localBtn); add(batchBtn)
             }, BorderLayout.CENTER)
         }
 
         refreshBtn.addActionListener { refreshReviewerPullRequests() }
         reviewBtn.isEnabled = false
         reviewBtn.addActionListener { reviewSelected() }
+        changesBtn.isEnabled = false
+        changesBtn.toolTipText = "Seçili PR'ın değişikliklerini IntelliJ diff görüntüleyicisinde açar (checkout gerekmez)"
+        changesBtn.addActionListener { showSelectedChanges() }
         reviewUrlBtn.addActionListener { session.reviewUrlInteractive() }
         localBtn.addActionListener { session.reviewLocal() }
         batchBtn.addActionListener { AutomaticReviewService.getInstance().runNow(project) }
@@ -83,11 +93,18 @@ class ReviewPanel(private val project: Project, parentDisposable: Disposable) : 
         clearBtn.addActionListener { session.clearFindings() }
 
         prList.selectionMode = ListSelectionModel.SINGLE_SELECTION
-        prList.addListSelectionListener { reviewBtn.isEnabled = prList.selectedIndex in loadedPRs.indices }
+        prList.addListSelectionListener {
+            val selected = prList.selectedIndex in loadedPRs.indices
+            reviewBtn.isEnabled = selected
+            changesBtn.isEnabled = selected
+        }
         prList.addMouseListener(object : MouseAdapter() {
             override fun mouseClicked(e: MouseEvent) {
-                if (e.clickCount == 2) reviewSelected()
+                if (e.clickCount == 2 && SwingUtilities.isLeftMouseButton(e)) reviewSelected()
             }
+
+            override fun mousePressed(e: MouseEvent) = maybeShowPopup(e)
+            override fun mouseReleased(e: MouseEvent) = maybeShowPopup(e)
         })
         val prScrollPane = JBScrollPane(prList).apply {
             preferredSize = Dimension(350, 150)
@@ -97,17 +114,8 @@ class ReviewPanel(private val project: Project, parentDisposable: Disposable) : 
         summaryArea.isEditable = false
         summaryArea.lineWrap = true
         summaryArea.wrapStyleWord = true
-        tabs.addTab("Bulgular (0)", JBScrollPane(findingsTable))
+        tabs.addTab("Bulgular (0)", findingsView)
         tabs.addTab("İnceleme Özeti", JBScrollPane(summaryArea))
-
-        findingsTable.addMouseListener(object : MouseAdapter() {
-            override fun mouseClicked(e: MouseEvent) {
-                if (e.clickCount == 2) {
-                    val row = findingsTable.selectedRow
-                    if (row >= 0) shownFindings.getOrNull(findingsTable.convertRowIndexToModel(row))?.let { navigateTo(it) }
-                }
-            }
-        })
 
         val bottomPanel = JPanel(BorderLayout(5, 5)).apply {
             border = JBUI.Borders.emptyTop(8)
@@ -170,6 +178,27 @@ class ReviewPanel(private val project: Project, parentDisposable: Disposable) : 
         session.reviewPullRequest(pr, pr.ref, publish)
     }
 
+    private fun showSelectedChanges() {
+        val pr = loadedPRs.getOrNull(prList.selectedIndex) ?: return
+        session.showChanges(pr.ref)
+    }
+
+    private fun maybeShowPopup(e: MouseEvent) {
+        if (!e.isPopupTrigger) return
+        val index = prList.locationToIndex(e.point)
+        if (index !in loadedPRs.indices || prList.getCellBounds(index, index)?.contains(e.point) != true) return
+        prList.selectedIndex = index
+        val pr = loadedPRs[index]
+        JPopupMenu().apply {
+            add(JMenuItem("AI ile İncele…").apply { addActionListener { reviewSelected() } })
+            add(JMenuItem("Değişiklikleri Göster").apply { addActionListener { session.showChanges(pr.ref) } })
+            if (pr.url.isNotBlank()) {
+                addSeparator()
+                add(JMenuItem("Tarayıcıda Aç").apply { addActionListener { BrowserUtil.browse(pr.url) } })
+            }
+        }.show(prList, e.x, e.y)
+    }
+
     private fun renderAutoStatus() {
         val settings = ReviewSettingsState.instance
         val auto = AutomaticReviewService.getInstance()
@@ -186,12 +215,14 @@ class ReviewPanel(private val project: Project, parentDisposable: Disposable) : 
     private fun renderSession() {
         statusLabel.text = session.statusText
         val current = session.current
-        findingsTableModel.rowCount = 0
-        shownFindings = current?.review?.findings ?: emptyList()
-        for (f in shownFindings) {
-            findingsTableModel.addRow(arrayOf(f.severity.uppercase(), f.type, f.file, f.line?.toString() ?: "-", f.message, f.suggestion))
+        val findings = current?.review?.findings ?: emptyList()
+        // Yalnızca durum metni değiştiğinde seçim/filtre sıfırlanmasın.
+        if (findings !== renderedFindings) {
+            renderedFindings = findings
+            findingsView.setFindings(findings)
         }
-        tabs.setTitleAt(0, "Bulgular (${shownFindings.size})")
+        val high = findings.count { it.severity == "high" }
+        tabs.setTitleAt(0, if (high > 0) "Bulgular (${findings.size} · $high yüksek)" else "Bulgular (${findings.size})")
         summaryArea.text = if (current == null) "" else buildString {
             append(current.title).append("\n\n")
             append("GENEL RİSK DURUMU: ").append(current.review.riskLevel.uppercase()).append("\n")
@@ -210,16 +241,35 @@ class ReviewPanel(private val project: Project, parentDisposable: Disposable) : 
         clearBtn.isEnabled = current != null
     }
 
+    /** PR incelemesinde satır numaraları PR sürümüne ait olduğu için diff'te; yerel incelemede editörde açar. */
     private fun navigateTo(finding: ReviewFinding) {
-        val root = session.current?.root ?: project.basePath ?: return
+        if (session.current?.outcome != null) {
+            showFindingInDiff(finding.file, finding)
+            return
+        }
+        openFileInEditor(finding)
+    }
+
+    private fun openFileInEditor(finding: ReviewFinding): Boolean {
+        val root = session.current?.root ?: project.basePath ?: return false
         val relative = finding.file.replace(Regex("^[ab]/"), "")
         val path = Paths.get(root).resolve(relative).normalize().toFile()
         val vFile = LocalFileSystem.getInstance().refreshAndFindFileByIoFile(path)
         if (vFile == null) {
             statusLabel.text = "Dosya çalışma alanında bulunamadı: $relative"
-            return
+            return false
         }
         OpenFileDescriptor(project, vFile, ((finding.line ?: 1) - 1).coerceAtLeast(0), 0).navigate(true)
+        return true
+    }
+
+    private fun showFindingInDiff(path: String, finding: ReviewFinding?) {
+        val ref = session.current?.outcome?.pullRequest?.ref
+        if (ref == null) {
+            finding?.let { openFileInEditor(it) }
+            return
+        }
+        PullRequestDiffViewer.show(project, ref, PullRequestDiffViewer.Focus(path, finding?.line, finding?.side))
     }
 
     private fun escape(text: String) = text.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")

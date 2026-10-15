@@ -35,6 +35,13 @@ class ReviewUrlAction : ProjectAction() {
     }
 }
 
+/** URL ile PR değişikliklerini yerel diff görüntüleyicide aç (AI incelemesi yapmadan). */
+class ShowPullRequestChangesAction : ProjectAction() {
+    override fun actionPerformed(e: AnActionEvent) {
+        ReviewSessionService.getInstance(e.project ?: return).showChangesUrlInteractive()
+    }
+}
+
 /** Yerel (staged / unstaged / untracked) değişiklikleri AI ile incele. */
 class LocalReviewAction : ProjectAction() {
     override fun actionPerformed(e: AnActionEvent) {

@@ -57,6 +57,11 @@
                 class="com.ykb.review.actions.ReviewUrlAction"
                 text="URL ile PR İncele…"
                 description="Bitbucket PR URL'i girerek inceleme başlatır"/>
+        <action id="YKB.Review.ShowPullRequestChanges"
+                class="com.ykb.review.actions.ShowPullRequestChangesAction"
+                text="URL ile PR Değişikliklerini Göster…"
+                description="PR değişikliklerini checkout yapmadan IntelliJ diff görüntüleyicisinde açar"
+                icon="AllIcons.Actions.Diff"/>
         <action id="YKB.Review.LocalReview"
                 class="com.ykb.review.actions.LocalReviewAction"
                 text="Yerel Değişiklikleri AI ile İncele"
@@ -92,6 +97,7 @@
             <add-to-group group-id="Git.Menu" anchor="last"/>
             <reference ref="YKB.Review.ListPullRequests"/>
             <reference ref="YKB.Review.ReviewUrl"/>
+            <reference ref="YKB.Review.ShowPullRequestChanges"/>
             <reference ref="YKB.Review.LocalReview"/>
             <separator/>
             <reference ref="YKB.Review.ToggleAutoReview"/>

@@ -118,6 +118,8 @@ class ReviewSessionService(private val project: Project) {
                 }
                 update(ReviewSession(title, result.review, result, project.basePath), "$message Risk: ${result.review.riskLevel.uppercase()}")
                 ReviewNotifier.notify(project, message)
+                // VS Code'daki gibi incelenen PR'ın değişikliklerini editörde aç.
+                PullRequestDiffViewer.show(project, result.pullRequest.ref)
             }
 
             override fun onCancel() = update(status = "İnceleme iptal edildi.")
@@ -126,11 +128,12 @@ class ReviewSessionService(private val project: Project) {
         })
     }
 
-    fun reviewUrlInteractive() {
+    /** PR URL'i sorar; geçersiz girişte diyalog kapanmaz. @return null = iptal */
+    private fun askPullRequestUrl(title: String): PullRequestRef? {
         val value = Messages.showInputDialog(
             project,
             "Bitbucket pull request bağlantısını girin:",
-            "URL ile PR İncele",
+            title,
             Messages.getQuestionIcon(),
             "",
             object : InputValidatorEx {
@@ -144,11 +147,23 @@ class ReviewSessionService(private val project: Project) {
                 override fun checkInput(inputString: String) = getErrorText(inputString) == null
                 override fun canClose(inputString: String) = checkInput(inputString)
             },
-        ) ?: return
-        val ref = PullRequestUrlParser.parse(value)
+        ) ?: return null
+        return PullRequestUrlParser.parse(value)
+    }
+
+    fun reviewUrlInteractive() {
+        val ref = askPullRequestUrl("URL ile PR İncele") ?: return
         val publish = choosePublication() ?: return
         reviewPullRequest(null, ref, publish)
     }
+
+    /** AI incelemesi yapmadan PR değişikliklerini yerel diff görüntüleyicide açar. */
+    fun showChangesUrlInteractive() {
+        val ref = askPullRequestUrl("PR Değişikliklerini Göster") ?: return
+        PullRequestDiffViewer.show(project, ref)
+    }
+
+    fun showChanges(ref: PullRequestRef) = PullRequestDiffViewer.show(project, ref)
 
     /** Ekranda gösterilen PR sonucunu Bitbucket'a yayınlar (yanlış PR'a yayın riskini önlemek için sonucun kendi ref'i kullanılır). */
     fun publishCurrent() {
