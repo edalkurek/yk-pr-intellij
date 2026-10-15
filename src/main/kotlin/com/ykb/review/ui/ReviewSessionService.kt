@@ -24,6 +24,7 @@ import com.ykb.review.ai.ReviewContext
 import com.ykb.review.ai.ReviewEngine
 import com.ykb.review.ai.ReviewEngineOptions
 import com.ykb.review.ai.ReviewFinding
+import com.ykb.review.ai.ReviewMerger
 import com.ykb.review.ai.ReviewResult
 import com.ykb.review.bitbucket.PullRequest
 import com.ykb.review.bitbucket.PullRequestRef
@@ -34,6 +35,8 @@ import com.ykb.review.local.LocalGit
 import com.ykb.review.review.ReviewCoordinator
 import com.ykb.review.review.ReviewOutcome
 import java.awt.datatransfer.DataFlavor
+import java.nio.file.Path
+import java.nio.file.Paths
 import java.util.concurrent.atomic.AtomicLong
 
 /** Tool window'da gösterilen bir inceleme sonucu. */
@@ -380,20 +383,14 @@ class ReviewSessionService(private val project: Project) {
     }
 
     fun reviewLocal() {
-        val roots = ProjectLevelVcsManager.getInstance(project).allVcsRoots
+        val vcsRoots = ProjectLevelVcsManager.getInstance(project).allVcsRoots
             .filter { it.vcs?.name.equals("Git", ignoreCase = true) }
             .map { it.path.path }
             .distinct()
-        val candidate: String = when {
-            roots.size == 1 -> roots[0]
-            roots.size > 1 -> {
-                val names = roots.toTypedArray()
-                val index = Messages.showChooseDialog(project, "İncelenecek depoyu seçin:", "Yerel AI Review", Messages.getQuestionIcon(), names, names[0])
-                if (index < 0) return
-                roots[index]
-            }
-            else -> project.basePath ?: return
-        }
+        // Commit Changes görünümündeki eylem proje kapsamındadır. Birden fazla Git kökü olduğunda
+        // kullanıcıya teknik ve çoğu zaman okunamayan yol listesi göstermek yerine hepsini incele.
+        val candidates = vcsRoots.ifEmpty { listOfNotNull(project.basePath) }
+        if (candidates.isEmpty()) return
         showToolWindow()
         update(status = "Yerel değişiklikler inceleniyor...")
         ProgressManager.getInstance().run(object : Task.Backgroundable(project, "Yerel değişiklikler inceleniyor…", true) {
@@ -404,43 +401,56 @@ class ReviewSessionService(private val project: Project) {
                 indicator.isIndeterminate = false
                 indicator.text = "Yerel git diff hesaplanıyor..."
                 setProgress("Yerel git diff hesaplanıyor…", null)
-                val root = LocalGit.topLevel(candidate) ?: throw IllegalStateException("Git deposu bulunamadı: $candidate")
-                val snapshot = LocalGit.localSnapshot(root)
-                if (snapshot.diff.isBlank()) {
+                val roots = candidates.map { candidate ->
+                    LocalGit.topLevel(candidate) ?: throw IllegalStateException("Git deposu bulunamadı: $candidate")
+                }.distinctBy { normalizePath(it) }
+                val snapshots = roots.map { root -> root to LocalGit.localSnapshot(root) }
+                    .filter { (_, snapshot) -> snapshot.diff.isNotBlank() }
+                val sessionRoot = if (roots.size == 1) roots.single() else project.basePath ?: roots.first()
+                if (snapshots.isEmpty()) {
                     session = ReviewSession(
-                        snapshot.title,
+                        "Yerel değişiklikler · ${roots.size} depo",
                         ReviewResult(
                             summary = "İncelenecek kod değişikliği yok.",
                             riskLevel = "low",
                             finalComment = "İşlem kapsamındaki kod dışı veya boş değişiklikleri kontrol edin.",
                         ),
                         null,
-                        root,
+                        sessionRoot,
                     )
                     return
                 }
                 val settings = ReviewSettingsState.instance
                 val llm = LLMClient.fromSettings()
-                val instructions = settings.effectiveInstructions(settings.repoInstructionForRemotes(LocalGit.remoteUrls(root)))
-                val input = if (settings.maskSecretsInDiff) DiffFilter.maskSecrets(snapshot.diff) else snapshot.diff
-                val review = ReviewEngine.review(
-                    ChatClient { model, messages -> llm.chat(model, messages) },
-                    input,
-                    ReviewContext(title = snapshot.title, extraInstructions = instructions),
-                    ReviewEngineOptions(
-                        fastModel = settings.fastModelName.trim(),
-                        complexModel = ConfigValidation.modelName(settings.complexModelName, "Güçlü model (Tier 2) adı"),
-                        maxChunkChars = settings.maxChunkChars.coerceAtLeast(4_000),
-                        failOnChunkError = true,
-                        minSeverity = settings.minSeverity,
-                        onProgress = { step, fraction ->
-                            indicator.text = step
-                            indicator.fraction = fraction
-                            setProgress(step, fraction)
-                        },
-                    ),
-                )
-                session = ReviewSession(snapshot.title, review, null, root)
+                val reviews = snapshots.mapIndexed { index, (root, snapshot) ->
+                    val repoLabel = Paths.get(root).fileName?.toString() ?: root
+                    val instructions = settings.effectiveInstructions(settings.repoInstructionForRemotes(LocalGit.remoteUrls(root)))
+                    val input = if (settings.maskSecretsInDiff) DiffFilter.maskSecrets(snapshot.diff) else snapshot.diff
+                    val review = ReviewEngine.review(
+                        ChatClient { model, messages -> llm.chat(model, messages) },
+                        input,
+                        ReviewContext(title = "${snapshot.title} · $repoLabel", extraInstructions = instructions),
+                        ReviewEngineOptions(
+                            fastModel = settings.fastModelName.trim(),
+                            complexModel = ConfigValidation.modelName(settings.complexModelName, "Güçlü model (Tier 2) adı"),
+                            maxChunkChars = settings.maxChunkChars.coerceAtLeast(4_000),
+                            failOnChunkError = true,
+                            minSeverity = settings.minSeverity,
+                            onProgress = { step, fraction ->
+                                val overall = (index + fraction) / snapshots.size
+                                val text = if (snapshots.size == 1) step else "$repoLabel (${index + 1}/${snapshots.size}) · $step"
+                                indicator.text = text
+                                indicator.fraction = overall
+                                setProgress(text, overall)
+                            },
+                        ),
+                    )
+                    qualifyFindingPaths(review, root, sessionRoot)
+                }
+                val review = if (reviews.size == 1) reviews.single() else ReviewMerger.merge(reviews)
+                val title = if (snapshots.size == 1) snapshots.single().second.title
+                else "Yerel değişiklikler · ${snapshots.size} depo"
+                session = ReviewSession(title, review, null, sessionRoot)
             }
 
             override fun onSuccess() {
@@ -465,6 +475,24 @@ class ReviewSessionService(private val project: Project) {
             }
         })
     }
+
+    /** Çok depolu incelemede bulgu yollarını ortak oturum köküne göre tekil ve gezilebilir hale getirir. */
+    private fun qualifyFindingPaths(review: ReviewResult, repositoryRoot: String, sessionRoot: String): ReviewResult {
+        val repository = Paths.get(repositoryRoot).toAbsolutePath().normalize()
+        val session = Paths.get(sessionRoot).toAbsolutePath().normalize()
+        return review.copy(findings = review.findings.map { finding ->
+            val raw = finding.file.replace(Regex("^[ab]/"), "")
+            val absolute = Paths.get(raw).let { if (it.isAbsolute) it else repository.resolve(it) }.normalize()
+            val display = relativeToOrNull(session, absolute)?.toString() ?: absolute.toString()
+            finding.copy(file = display.replace('\\', '/'))
+        })
+    }
+
+    private fun relativeToOrNull(base: Path, child: Path): Path? =
+        runCatching { if (child.startsWith(base)) base.relativize(child) else null }.getOrNull()
+
+    private fun normalizePath(path: String): String =
+        Paths.get(path).toAbsolutePath().normalize().toString().lowercase()
 
     /** Görünümü ve editör işaretlerini temizler; sonuç geçmişte kalır (geçmiş listesinden geri açılabilir). */
     fun clearFindings() {
