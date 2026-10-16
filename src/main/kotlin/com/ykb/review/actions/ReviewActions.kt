@@ -3,12 +3,17 @@ package com.ykb.review.actions
 import com.intellij.openapi.actionSystem.ActionUpdateThread
 import com.intellij.openapi.actionSystem.AnAction
 import com.intellij.openapi.actionSystem.AnActionEvent
+import com.intellij.openapi.actionSystem.CommonDataKeys
+import com.intellij.openapi.fileEditor.FileDocumentManager
 import com.intellij.openapi.options.ShowSettingsUtil
 import com.intellij.openapi.project.DumbAware
 import com.intellij.openapi.ui.Messages
+import com.intellij.openapi.vcs.VcsDataKeys
+import com.intellij.openapi.vcs.changes.ChangesUtil
 import com.ykb.review.config.ReviewSettingsConfigurable
 import com.ykb.review.config.SecretStore
 import com.ykb.review.config.ReviewSettingsState
+import com.ykb.review.local.LocalReviewTarget
 import com.ykb.review.review.AutomaticReviewService
 import com.ykb.review.ui.ReviewNotifier
 import com.ykb.review.ui.ReviewSessionService
@@ -45,7 +50,35 @@ class ShowPullRequestChangesAction : ProjectAction() {
 /** Yerel (staged / unstaged / untracked) değişiklikleri AI ile incele. */
 class LocalReviewAction : ProjectAction() {
     override fun actionPerformed(e: AnActionEvent) {
-        ReviewSessionService.getInstance(e.project ?: return).reviewLocal()
+        ReviewSessionService.getInstance(e.project ?: return).reviewLocal(selectedTarget(e))
+    }
+
+    private fun selectedTarget(e: AnActionEvent): LocalReviewTarget? {
+        val selectedPaths = linkedSetOf<String>()
+        val selectedChanges = e.getData(VcsDataKeys.SELECTED_CHANGES).orEmpty()
+        if (selectedChanges.isNotEmpty()) {
+            selectedChanges.mapTo(selectedPaths) { ChangesUtil.getFilePath(it).path }
+        } else {
+            val filePaths = e.getData(VcsDataKeys.FILE_PATHS)?.toList().orEmpty()
+            when {
+                filePaths.isNotEmpty() -> filePaths.mapTo(selectedPaths) { it.path }
+                e.getData(VcsDataKeys.FILE_PATH) != null -> selectedPaths += e.getData(VcsDataKeys.FILE_PATH)!!.path
+                e.getData(CommonDataKeys.VIRTUAL_FILE) != null -> selectedPaths += e.getData(CommonDataKeys.VIRTUAL_FILE)!!.path
+            }
+        }
+        if (selectedPaths.isEmpty()) return null
+
+        val editor = e.getData(CommonDataKeys.EDITOR)
+        val selection = editor?.selectionModel
+        val editorFile = editor?.document?.let { FileDocumentManager.getInstance().getFile(it)?.path }
+        val selectedFile = selectedPaths.singleOrNull()
+        if (selection == null || !selection.hasSelection() || editorFile != selectedFile) {
+            return LocalReviewTarget(selectedPaths.toList())
+        }
+        val start = editor.document.getLineNumber(selection.selectionStart) + 1
+        val inclusiveEndOffset = (selection.selectionEnd - 1).coerceAtLeast(selection.selectionStart)
+        val end = editor.document.getLineNumber(inclusiveEndOffset) + 1
+        return LocalReviewTarget(selectedPaths.toList(), start, end)
     }
 }
 

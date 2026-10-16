@@ -45,14 +45,17 @@ object LocalGit {
     }
 
     /** Staged ve unstaged bölümleri ayrı tutar (zıt düzenlemeler birbirini götürmesin), untracked dosyaları ekler. */
-    fun localSnapshot(root: String): LocalSnapshot {
-        val staged = git(root, "diff", "--cached", *DIFF_OPTIONS.toTypedArray())
-        val unstaged = git(root, "diff", *DIFF_OPTIONS.toTypedArray())
+    fun localSnapshot(root: String, paths: List<String> = emptyList()): LocalSnapshot {
+        val pathspec = if (paths.isEmpty()) emptyArray() else (listOf("--") + paths).toTypedArray()
+        val staged = git(root, "diff", "--cached", *DIFF_OPTIONS.toTypedArray(), *pathspec)
+        val unstaged = git(root, "diff", *DIFF_OPTIONS.toTypedArray(), *pathspec)
         val diff = StringBuilder()
         if (staged.isNotEmpty()) diff.append("Staged değişiklikler:\n").append(staged)
         if (unstaged.isNotEmpty()) diff.append("\nUnstaged değişiklikler:\n").append(unstaged)
 
-        val untracked = git(root, "ls-files", "--others", "--exclude-standard", "-z").split('\u0000').filter { it.isNotEmpty() }
+        val untracked = git(root, "ls-files", "--others", "--exclude-standard", "-z", *pathspec)
+            .split('\u0000')
+            .filter { it.isNotEmpty() }
         for (file in untracked) {
             ProgressManager.checkCanceled()
             val path = Paths.get(root, file)
@@ -68,7 +71,12 @@ object LocalGit {
                 diff.append(lines.joinToString("\n") { "+$it" }).append('\n')
             }
         }
-        return LocalSnapshot("Yerel değişiklikler · staged, unstaged ve untracked", diff.toString())
+        val scope = when (paths.size) {
+            0 -> ""
+            1 -> " · ${paths.single()}"
+            else -> " · ${paths.size} seçili dosya"
+        }
+        return LocalSnapshot("Yerel değişiklikler · staged, unstaged ve untracked$scope", diff.toString())
     }
 
     fun exists(path: String) = File(path).exists()

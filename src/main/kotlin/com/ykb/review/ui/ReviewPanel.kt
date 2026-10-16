@@ -157,7 +157,7 @@ class ReviewPanel(private val project: Project, parentDisposable: Disposable) : 
             })
             addSeparator()
             add(action("URL ile PR İncele…", "Bitbucket PR bağlantısı ile inceleme başlatır (panodaki bağlantı otomatik doldurulur)", AllIcons.Actions.Search) { session.reviewUrlInteractive() })
-            add(action("Yerel Değişiklikleri İncele", "Tüm Git depolarındaki staged / unstaged / untracked değişiklikleri inceler", AllIcons.Vcs.Changelist) { session.reviewLocal() })
+            add(action("Yerel Değişiklikleri İncele", "Seçili dosya/class veya repository kapsamındaki yerel değişiklikleri inceler", AllIcons.Vcs.Changelist) { session.reviewLocal() })
             addSeparator()
             ActionManager.getInstance().getAction("YKB.Review.RunAutoReviewNow")?.let { add(it) }
             ActionManager.getInstance().getAction("YKB.Review.OpenSettings")?.let { add(it) }

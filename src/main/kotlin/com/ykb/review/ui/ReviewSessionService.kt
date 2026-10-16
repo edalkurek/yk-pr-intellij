@@ -32,6 +32,8 @@ import com.ykb.review.bitbucket.PullRequestUrlParser
 import com.ykb.review.config.ConfigValidation
 import com.ykb.review.config.ReviewSettingsState
 import com.ykb.review.local.LocalGit
+import com.ykb.review.local.LocalReviewScopeResolver
+import com.ykb.review.local.LocalReviewTarget
 import com.ykb.review.review.ReviewCoordinator
 import com.ykb.review.review.ReviewOutcome
 import java.awt.datatransfer.DataFlavor
@@ -382,15 +384,25 @@ class ReviewSessionService(private val project: Project) {
         })
     }
 
-    fun reviewLocal() {
+    fun reviewLocal(target: LocalReviewTarget? = null) {
         val vcsRoots = ProjectLevelVcsManager.getInstance(project).allVcsRoots
             .filter { it.vcs?.name.equals("Git", ignoreCase = true) }
             .map { it.path.path }
             .distinct()
-        // Commit Changes görünümündeki eylem proje kapsamındadır. Birden fazla Git kökü olduğunda
-        // kullanıcıya teknik ve çoğu zaman okunamayan yol listesi göstermek yerine hepsini incele.
-        val candidates = vcsRoots.ifEmpty { listOfNotNull(project.basePath) }
+        val availableRoots = vcsRoots.ifEmpty { listOfNotNull(project.basePath) }
+        val candidates = when {
+            target != null || availableRoots.size <= 1 -> availableRoots
+            else -> listOfNotNull(chooseRepository(availableRoots))
+        }
         if (candidates.isEmpty()) return
+        val roots = candidates.map { candidate ->
+            LocalGit.topLevel(candidate) ?: throw IllegalStateException("Git deposu bulunamadı: $candidate")
+        }.distinctBy { normalizePath(it) }
+        val scopes = LocalReviewScopeResolver.resolve(roots, target)
+        if (target != null && scopes.isEmpty()) {
+            Messages.showWarningDialog(project, "Seçili dosya veya klasör açık bir Git deposunda bulunamadı.", "YKB AI Review")
+            return
+        }
         showToolWindow()
         update(status = "Yerel değişiklikler inceleniyor...")
         ProgressManager.getInstance().run(object : Task.Backgroundable(project, "Yerel değişiklikler inceleniyor…", true) {
@@ -401,15 +413,14 @@ class ReviewSessionService(private val project: Project) {
                 indicator.isIndeterminate = false
                 indicator.text = "Yerel git diff hesaplanıyor..."
                 setProgress("Yerel git diff hesaplanıyor…", null)
-                val roots = candidates.map { candidate ->
-                    LocalGit.topLevel(candidate) ?: throw IllegalStateException("Git deposu bulunamadı: $candidate")
-                }.distinctBy { normalizePath(it) }
-                val snapshots = roots.map { root -> root to LocalGit.localSnapshot(root) }
+                val snapshots = scopes.map { scope -> scope to LocalGit.localSnapshot(scope.root, scope.relativePaths) }
                     .filter { (_, snapshot) -> snapshot.diff.isNotBlank() }
-                val sessionRoot = if (roots.size == 1) roots.single() else project.basePath ?: roots.first()
+                val sessionRoot = if (scopes.size == 1) scopes.single().root else project.basePath ?: scopes.first().root
                 if (snapshots.isEmpty()) {
+                    val emptyTitle = if (scopes.size == 1) LocalGit.localSnapshot(scopes.single().root, scopes.single().relativePaths).title
+                    else "Yerel değişiklikler · ${scopes.size} depo"
                     session = ReviewSession(
-                        "Yerel değişiklikler · ${roots.size} depo",
+                        emptyTitle,
                         ReviewResult(
                             summary = "İncelenecek kod değişikliği yok.",
                             riskLevel = "low",
@@ -422,9 +433,15 @@ class ReviewSessionService(private val project: Project) {
                 }
                 val settings = ReviewSettingsState.instance
                 val llm = LLMClient.fromSettings()
-                val reviews = snapshots.mapIndexed { index, (root, snapshot) ->
-                    val repoLabel = Paths.get(root).fileName?.toString() ?: root
-                    val instructions = settings.effectiveInstructions(settings.repoInstructionForRemotes(LocalGit.remoteUrls(root)))
+                val reviews = snapshots.mapIndexed { index, (scope, snapshot) ->
+                    val repoLabel = Paths.get(scope.root).fileName?.toString() ?: scope.root
+                    val baseInstructions = settings.effectiveInstructions(
+                        settings.repoInstructionForRemotes(LocalGit.remoteUrls(scope.root)),
+                    )
+                    val instructions = listOf(baseInstructions, scope.extraInstructions)
+                        .filterNotNull()
+                        .filter { it.isNotBlank() }
+                        .joinToString("\n\nYerel inceleme kapsamı:\n")
                     val input = if (settings.maskSecretsInDiff) DiffFilter.maskSecrets(snapshot.diff) else snapshot.diff
                     val review = ReviewEngine.review(
                         ChatClient { model, messages -> llm.chat(model, messages) },
@@ -445,7 +462,7 @@ class ReviewSessionService(private val project: Project) {
                             },
                         ),
                     )
-                    qualifyFindingPaths(review, root, sessionRoot)
+                    qualifyFindingPaths(review, scope.root, sessionRoot)
                 }
                 val review = if (reviews.size == 1) reviews.single() else ReviewMerger.merge(reviews)
                 val title = if (snapshots.size == 1) snapshots.single().second.title
@@ -467,13 +484,29 @@ class ReviewSessionService(private val project: Project) {
 
             override fun onCancel() = update(status = "İnceleme iptal edildi.")
 
-            override fun onThrowable(error: Throwable) = handleError(error, "Yerel inceleme başarısız") { reviewLocal() }
+            override fun onThrowable(error: Throwable) = handleError(error, "Yerel inceleme başarısız") { reviewLocal(target) }
 
             override fun onFinished() {
                 endProgress()
                 fire()
             }
         })
+    }
+
+    private fun chooseRepository(roots: List<String>): String? {
+        val labels = roots.map { root ->
+            val name = Paths.get(root).fileName?.toString() ?: root
+            "$name  —  $root"
+        }.toTypedArray()
+        val selected = Messages.showChooseDialog(
+            project,
+            "Yerel değişiklikleri incelenecek repository'yi seçin.",
+            "AI Review Kapsamı",
+            Messages.getQuestionIcon(),
+            labels,
+            labels.first(),
+        )
+        return roots.getOrNull(selected)
     }
 
     /** Çok depolu incelemede bulgu yollarını ortak oturum köküne göre tekil ve gezilebilir hale getirir. */

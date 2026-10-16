@@ -15,7 +15,8 @@ Bu proje, Bitbucket Server / Data Center PR'larını ve yerel Git değişiklikle
    - Tek tıkla diff analizi ve inceleme başlatma
    - Otomatik genel özet ve satır içi (inline) yorum gönderme
 3. **Yerel Ön İnceleme (Pre-Commit Review):**
-   - Commit atmadan önce staged/unstaged yerel diff'i tek tıkla inceleme ve potansiyel riskleri önceden yakalama.
+   - Commit atmadan önce staged/unstaged/untracked yerel diff'i inceleme ve potansiyel riskleri önceden yakalama.
+   - Changes görünümünde seçili class/dosya veya repository'yi; editörde seçili kod aralığını kapsam olarak kullanma.
 4. **Hassas Veri Maskeleme:**
    - Token, API anahtarı ve şifrelerin diff üzerinden modele iletilmeden önce otomatik maskelenmesi.
 
@@ -68,7 +69,7 @@ Eklentiyi şirket içinde veya IDE'ye `Install Plugin from Disk...` ile kurmak �
 ```bash
 ./gradlew buildPlugin
 ```
-Üretilen paket: `build/distributions/yk-pr-intellij-1.3.1.zip`
+Üretilen paket: `build/distributions/yk-pr-intellij-1.3.2.zip`
 
 ---
 
