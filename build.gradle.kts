@@ -1,7 +1,9 @@
+import org.jetbrains.intellij.platform.gradle.IntelliJPlatformType
+
 plugins {
     id("java")
     id("org.jetbrains.kotlin.jvm") version "1.9.23"
-    id("org.jetbrains.intellij") version "1.17.4"
+    id("org.jetbrains.intellij.platform") version "2.10.2"
 }
 
 val pluginGroup: String by project
@@ -16,9 +18,19 @@ version = pluginVersion
 
 repositories {
     mavenCentral()
+    intellijPlatform {
+        defaultRepositories()
+    }
 }
 
 dependencies {
+    intellijPlatform {
+        create(IntelliJPlatformType.fromCode(platformType), platformVersion)
+        // Git.Menu grubu için (plugin.xml'de optional depends). Derleme bağımlılığı yok ama verifier bunu bilmeli.
+        bundledPlugin("Git4Idea")
+        pluginVerifier()
+        zipSigner()
+    }
     implementation("com.squareup.okhttp3:okhttp:4.12.0") {
         // Kotlin stdlib IDE tarafından sağlanır; eklentiye gömülürse sınıf çakışması yaratır.
         exclude(group = "org.jetbrains.kotlin")
@@ -26,11 +38,39 @@ dependencies {
     implementation("com.google.code.gson:gson:2.10.1")
     testImplementation("org.jetbrains.kotlin:kotlin-test:1.9.23")
     testImplementation("org.junit.jupiter:junit-jupiter:5.10.2")
+    testImplementation("com.squareup.okhttp3:mockwebserver:4.12.0") {
+        exclude(group = "org.jetbrains.kotlin")
+    }
+    testRuntimeOnly("org.junit.platform:junit-platform-launcher")
 }
 
-intellij {
-    version.set(platformVersion)
-    type.set(platformType)
+intellijPlatform {
+    instrumentCode = false
+
+    pluginConfiguration {
+        version = pluginVersion
+        ideaVersion {
+            sinceBuild = pluginSinceBuild
+            untilBuild = pluginUntilBuild
+        }
+    }
+
+    // 2023.3 ile pluginUntilBuild arasındaki sürümlerde API/kayıt uyumluluğunu doğrular (gradlew verifyPlugin).
+    pluginVerification {
+        ides {
+            recommended()
+        }
+    }
+
+    signing {
+        certificateChain = providers.environmentVariable("CERTIFICATE_CHAIN")
+        privateKey = providers.environmentVariable("PRIVATE_KEY")
+        password = providers.environmentVariable("PRIVATE_KEY_PASSWORD")
+    }
+
+    publishing {
+        token = providers.environmentVariable("PUBLISH_TOKEN")
+    }
 }
 
 java {
@@ -44,28 +84,6 @@ tasks {
     }
     withType<org.jetbrains.kotlin.gradle.tasks.KotlinCompile> {
         kotlinOptions.jvmTarget = "17"
-    }
-
-    instrumentCode {
-        enabled = false
-    }
-    instrumentTestCode {
-        enabled = false
-    }
-
-    patchPluginXml {
-        sinceBuild.set(pluginSinceBuild)
-        untilBuild.set(pluginUntilBuild)
-    }
-
-    signPlugin {
-        certificateChain.set(System.getenv("CERTIFICATE_CHAIN"))
-        privateKey.set(System.getenv("PRIVATE_KEY"))
-        password.set(System.getenv("PRIVATE_KEY_PASSWORD"))
-    }
-
-    publishPlugin {
-        token.set(System.getenv("PUBLISH_TOKEN"))
     }
 
     test {

@@ -73,11 +73,17 @@ object PublishService {
             group.findings.add(finding)
         }
 
+        val hashes = if (groups.isEmpty()) null else try {
+            client.getEffectiveDiffHashes(ref)
+        } catch (e: Throwable) {
+            e.rethrowIfControlFlow()
+            null
+        }
         val failures = mutableListOf<Throwable>()
         for ((id, group) in groups) {
             val text = group.comments.joinToString("\n\n---\n\n")
             try {
-                once(id, text) { body -> client.addInlineComment(ref, body, group.location) }
+                once(id, text) { body -> client.addInlineComment(ref, body, group.location, hashes) }
                 inlineFindings.addAll(group.findings)
             } catch (e: Throwable) {
                 e.rethrowIfControlFlow()

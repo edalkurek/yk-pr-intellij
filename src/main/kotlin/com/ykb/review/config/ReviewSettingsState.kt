@@ -46,6 +46,10 @@ class ReviewSettingsState : PersistentStateComponent<ReviewSettingsState> {
     /** Anahtar: `host/projectKey/repoSlug` (küçük harf, VS Code eklentisiyle aynı). Eski sürümlerden kalan yalnızca-slug anahtarlar da desteklenir. */
     var repoInstructions: MutableMap<String, String> = mutableMapOf()
 
+    /** Ortak talimat reposu (`PROJECT/slug`, aynı Bitbucket sunucusunda); boşsa yalnızca IDE talimatları kullanılır. */
+    var sharedRulesRepo: String = ""
+    var sharedRulesBranch: String = "master"
+
     var maskSecretsInDiff: Boolean = true
 
     /** Kurumsal ortamda sertifika doğrulamasını tamamen kapatır (VS Code eklentisinin varsayılan davranışı). */

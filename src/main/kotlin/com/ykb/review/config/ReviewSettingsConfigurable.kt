@@ -41,7 +41,9 @@ class ReviewSettingsConfigurable : Configurable {
             ui.publicationModeCombo.selectedItem != s.publicationMode ||
             ui.openDiffAfterReviewCheck.isSelected != s.openDiffAfterReview ||
             ui.showInlaysCheck.isSelected != s.showFindingInlays ||
-            ui.repoInstructions() != s.repoInstructions.filterValues { it.isNotBlank() }
+            ui.repoInstructions() != s.repoInstructions.filterValues { it.isNotBlank() } ||
+            ui.sharedRulesRepoField.text.trim() != s.sharedRulesRepo ||
+            ui.sharedRulesBranchField.text.trim().ifEmpty { "master" } != s.sharedRulesBranch
     }
 
     override fun apply() {
@@ -58,6 +60,10 @@ class ReviewSettingsConfigurable : Configurable {
             fast = ConfigValidation.modelName(ui.fastModel, "Hızlı model")
             complex = ConfigValidation.modelName(ui.complexModel, "Güçlü model")
             ConfigValidation.interval(ui.interval)
+            val sharedRepo = ui.sharedRulesRepoField.text.trim()
+            if (sharedRepo.isNotEmpty() && SharedRulesRepo.parse(sharedRepo, ui.sharedRulesBranchField.text) == null) {
+                throw ConfigurationError("Ortak talimat reposu PROJE/slug biçiminde olmalıdır (ör. SDLC/ai-review-rules).")
+            }
         } catch (e: ConfigurationError) {
             throw ConfigurationException(e.message, "YKB AI Code Review")
         }
@@ -82,6 +88,9 @@ class ReviewSettingsConfigurable : Configurable {
         s.openDiffAfterReview = ui.openDiffAfterReviewCheck.isSelected
         s.showFindingInlays = ui.showInlaysCheck.isSelected
         s.repoInstructions = ui.repoInstructions().toMutableMap()
+        s.sharedRulesRepo = ui.sharedRulesRepoField.text.trim()
+        s.sharedRulesBranch = ui.sharedRulesBranchField.text.trim().ifEmpty { "master" }
+        SharedInstructions.instance.invalidate()
 
         // Gizli bilgiler yalnızca yeni değer yazıldıysa güncellenir.
         if (ui.typedBitbucketToken.isNotEmpty()) SecretStore.set(SecretStore.Key.BITBUCKET_TOKEN, ui.typedBitbucketToken)
@@ -109,6 +118,8 @@ class ReviewSettingsConfigurable : Configurable {
         ui.openDiffAfterReviewCheck.isSelected = s.openDiffAfterReview
         ui.showInlaysCheck.isSelected = s.showFindingInlays
         ui.setRepoInstructions(s.repoInstructions.filterValues { it.isNotBlank() })
+        ui.sharedRulesRepoField.text = s.sharedRulesRepo
+        ui.sharedRulesBranchField.text = s.sharedRulesBranch
         ui.updateSecretHints(s)
         ui.syncDependentState()
     }

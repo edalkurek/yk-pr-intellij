@@ -17,6 +17,16 @@
     ]]></description>
 
     <change-notes><![CDATA[
+        <h3>1.4.0 — Ortak talimat reposu</h3>
+        <ul>
+            <li><b>Ortak talimatlar:</b> Ekip inceleme kuralları Bitbucket'taki ortak bir repodan okunur: general.md (tüm repolar), projects/PROJE.md, repos/PROJE/slug.md. IDE'deki kişisel kurallar bunlara eklenir.</li>
+            <li><b>Görünürlük:</b> İnceleme özetinde hangi talimat kaynaklarının uygulandığı gösterilir.</li>
+            <li><b>Hız:</b> Büyük PR'larda diff parçaları modele eşzamanlı (en fazla 3) gönderilir.</li>
+        </ul>
+        <h3>1.3.4 — Satır yorumu konumu</h3>
+        <ul>
+            <li><b>Satır içi yorumlar:</b> Bitbucket'ta dosyanın en üstüne düşen satır yorumları artık ilgili satıra iliştirilir (anchor'a etkin diff commit'leri eklendi, srcPath yalnızca yeniden adlandırmada gönderilir).</li>
+        </ul>
         <h3>1.3.3 — Başlangıç hatası düzeltmesi</h3>
         <ul>
             <li><b>Git menüsü:</b> IDE açılışındaki "group with id Git.Menu isn't registered" hatası giderildi; Git menüsü girişi artık yalnızca Git eklentisi yüklüyse eklenir.</li>

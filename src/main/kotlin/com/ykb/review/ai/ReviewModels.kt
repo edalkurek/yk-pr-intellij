@@ -31,6 +31,8 @@ data class ReviewResult(
     val finalComment: String,
     /** Hangi model(ler)in kullanıldığı (yalnızca IDE içinde gösterilir). */
     val modelUsed: String? = null,
+    /** Uygulanan talimat kaynakları (yalnızca IDE içinde gösterilir), örn. "Ortak genel + IDE repo". */
+    val instructionSources: String? = null,
 )
 
 data class ReviewContext(

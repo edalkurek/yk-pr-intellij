@@ -45,6 +45,9 @@ data class InlineCommentLocation(
     val lineType: String,
 )
 
+/** PR'ın etkin (EFFECTIVE) diff'ini tanımlayan commit'ler; satır yorumu anchor'ı bu diff'e bağlanır. */
+data class DiffHashes(val fromHash: String, val toHash: String)
+
 class BitbucketHttpException(val status: Int, message: String) : IOException(message)
 
 class FileTooLargeException(val path: String, val limitBytes: Int) :

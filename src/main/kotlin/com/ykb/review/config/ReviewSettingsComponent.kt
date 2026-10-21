@@ -104,6 +104,11 @@ class ReviewSettingsComponent {
     }
     val repoInstructionsTable = JBTable(repoInstructionsModel)
 
+    val sharedRulesRepoField = JBTextField().apply { emptyText.text = "PROJE/repo-slug (ör. SDLC/ai-review-rules) — boşsa kapalı" }
+    val sharedRulesBranchField = JBTextField()
+    private val testSharedRulesBtn = JButton("Test Et / Yenile")
+    private val sharedRulesTestResult = JBLabel()
+
     private val testBitbucketBtn = JButton("Bitbucket Bağlantısını Test Et")
     private val testModelBtn = JButton("Model Bağlantısını Test Et")
     private val bitbucketTestResult = JBLabel()
@@ -117,6 +122,7 @@ class ReviewSettingsComponent {
 
         testBitbucketBtn.addActionListener { testBitbucket() }
         testModelBtn.addActionListener { testModel() }
+        testSharedRulesBtn.addActionListener { testSharedRules() }
         clearCredentialsBtn.addActionListener { clearCredentials() }
         tlsWarning.isVisible = false
         disableTlsCheck.addActionListener { tlsWarning.isVisible = disableTlsCheck.isSelected }
@@ -152,7 +158,7 @@ class ReviewSettingsComponent {
         val repoSectionPanel = JPanel(BorderLayout(0, JBUI.scale(4))).apply {
             add(JBLabel("<html><b>Repo Bazlı Özel İnceleme Talimatları</b></html>"), BorderLayout.NORTH)
             add(repoTablePanel, BorderLayout.CENTER)
-            add(comment("Bir repo PR'ı veya yerel deposu incelenirken genel kurallara ek olarak kullanılır. Çift tıklayarak düzenleyin."), BorderLayout.SOUTH)
+            add(comment("Bir repo PR'ı veya yerel deposu incelenirken genel kurallara ek olarak kullanılır. Ortak talimat reposundaki kurallar bunlardan önce uygulanır. Çift tıklayarak düzenleyin."), BorderLayout.SOUTH)
         }
 
         mainPanel = FormBuilder.createFormBuilder()
@@ -193,6 +199,13 @@ class ReviewSettingsComponent {
             .addComponent(tlsWarning)
 
             .addSeparator()
+            .addComponent(JBLabel("<html><b>Ortak Talimat Reposu</b></html>"))
+            .addLabeledComponent("Repo (PROJE/slug):", sharedRulesRepoField, 1, false)
+            .addLabeledComponent("Dal:", sharedRulesBranchField, 1, false)
+            .addComponentToRightColumn(comment("Ekip talimatları Bitbucket'ta tutulur: general.md (tüm repolar), projects/PROJE.md, repos/PROJE/slug.md. Ayrıntılar README'de."))
+            .addComponent(row(testSharedRulesBtn, sharedRulesTestResult))
+
+            .addSeparator()
             .addComponent(repoSectionPanel)
             .addComponentFillVertically(JPanel(), 0)
             .panel
@@ -205,6 +218,8 @@ class ReviewSettingsComponent {
         bitbucketTestResult.icon = null
         modelTestResult.text = ""
         modelTestResult.icon = null
+        sharedRulesTestResult.text = ""
+        sharedRulesTestResult.icon = null
     }
 
     private fun comment(text: String): JBLabel = JBLabel(text).apply {
@@ -290,6 +305,27 @@ class ReviewSettingsComponent {
         }
             .onSuccess { showResult(modelTestResult, true, "Model yanıt verdi ($model): ${it.trim().take(40)}") }
             .onFailure { showResult(modelTestResult, false, "Başarısız: ${it.safeMessage()}") }
+    }
+
+    /** Ortak talimat reposunu formdaki değerlerle okur ve önbelleği yeniler. */
+    private fun testSharedRules() {
+        val repo = SharedRulesRepo.parse(sharedRulesRepoField.text, sharedRulesBranchField.text)
+        if (repo == null) {
+            showResult(sharedRulesTestResult, false, "Repo PROJE/slug biçiminde olmalı (ör. SDLC/ai-review-rules).")
+            return
+        }
+        withProgress("Ortak talimat reposu okunuyor…") {
+            bitbucketClient().getRawFile(repo.projectKey, repo.slug, "general.md", repo.branch, 256 * 1024)
+        }
+            .onSuccess { general ->
+                SharedInstructions.instance.invalidate()
+                if (general == null) {
+                    showResult(sharedRulesTestResult, false, "general.md bulunamadı (${repo.projectKey}/${repo.slug}@${repo.branch}). Repo, dal ve okuma yetkisini kontrol edin.")
+                } else {
+                    showResult(sharedRulesTestResult, true, "Bağlantı başarılı · general.md ${general.size} bayt · önbellek yenilendi")
+                }
+            }
+            .onFailure { showResult(sharedRulesTestResult, false, "Başarısız: ${it.safeMessage()}") }
     }
 
     private fun clearCredentials() {

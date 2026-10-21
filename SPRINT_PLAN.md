@@ -10,8 +10,8 @@ Kullanıcının *"karmaşık işler için daha güçlü modeller kullan"* direkt
 
 | Katman | Görev / İş Yükü Türü | Model Tipi (Örnek) | Neden & Özellik |
 | :--- | :--- | :--- | :--- |
-| **Tier 1: Hızlı / Triage Katmanı** | Dosya filtreleme, diff boyut analizi, trivial typo kontrolleri, PR metadata özetleme | Hızlı & Düşük Maliyetli (örn. `GPT-4o-mini`, `Claude 3.5 Haiku`, `Gemini 1.5 Flash` veya yerel 8B modeller) | Milisaniyeler içinde yanıt, token tasarrufu, ön eleme. |
-| **Tier 2: Güçlü / Derin Analiz Katmanı (Complex Engine)** | Güvenlik açıkları (SQLi, XSS, token leakage), concurrency/thread-safety, transaction yönetimi, null-safety, mimari uyum | **En Güçlü Modeller** (örn. `Claude 3.5 Sonnet`, `GPT-4o`, `OpenAI o1 / o3-mini`, `Gemini 1.5 Pro` veya yerel 70B Quantized modeller) | Geniş context window, karmaşık zincirleme mantık ve derin kod muhakemesi yeteneği. |
+| **Tier 1: Hızlı / Triage Katmanı** | Dosya filtreleme, diff boyut analizi, trivial typo kontrolleri, PR metadata özetleme | Hızlı & Düşük Maliyetli (sağlayıcının küçük/hızlı modelleri veya yerel küçük modeller) | Milisaniyeler içinde yanıt, token tasarrufu, ön eleme. |
+| **Tier 2: Güçlü / Derin Analiz Katmanı (Complex Engine)** | Güvenlik açıkları (SQLi, XSS, token leakage), concurrency/thread-safety, transaction yönetimi, null-safety, mimari uyum | **En Güçlü Modeller** (sağlayıcının en yetenekli muhakeme/kod modelleri veya yerel büyük modeller) | Geniş context window, karmaşık zincirleme mantık ve derin kod muhakemesi yeteneği. |
 | **Dinamik Yönlendirici (Smart Router)** | Diff boyutu, değişen dosya türleri (`.kt`, `.java`, `.sql`, config) ve karmaşıklık sinyallerine göre diff parçalarını otomatik olarak uygun modele sevk eder. | Heuristic Classifier & Rules | Kritik dosyalar (Auth, Payment, Service, Security) otomatik olarak Güçlü Modele yönlendirilir. |
 
 ---
@@ -27,14 +27,14 @@ graph TD
 ```
 
 ### 📋 Sprint 1: Mimari Kurulum, Proje İskeleti & Konfigürasyon (TAMAMLANDI)
-- [x] Hedef dizin (`yk-pr-intellij`) oluşturulması
+- [x] Hedef dizin (`ykb-pr-review-intellij`) oluşturulması
 - [x] Gradle Kotlin DSL (`build.gradle.kts`, `settings.gradle.kts`, `gradle.properties`, `gradlew.bat`)
 - [x] `plugin.xml` manifest yapılandırması (IntelliJ 2023.2+ - 2024.3+ uyumlu)
 - [x] `PersistentStateComponent` tabanlı kalıcı ayarlar servisi (`ReviewSettingsState.kt`)
 - [x] IntelliJ Preferences (`Settings -> Tools -> YKB AI Review`) ayar ekranı (`ReviewSettingsConfigurable.kt`, `ReviewSettingsComponent.kt`)
 
 ### 📋 Sprint 2: Bitbucket Entegrasyonu & Git Diff İşleme (TAMAMLANDI)
-- [x] Bitbucket Server/Cloud REST API Client (`BitbucketClient.kt`, `BitbucketModels.kt`)
+- [x] Bitbucket Server / Data Center REST API Client (Bitbucket Cloud desteklenmez) (`BitbucketClient.kt`, `BitbucketModels.kt`)
   - PR Listesi çekme (`/pull-requests`)
   - PR Diff çekme (Raw diff / unified diff)
   - Inline yorum ve genel özet yorumu gönderme

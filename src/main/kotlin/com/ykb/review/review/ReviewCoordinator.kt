@@ -13,6 +13,7 @@ import com.ykb.review.bitbucket.BitbucketRepository
 import com.ykb.review.bitbucket.PullRequest
 import com.ykb.review.bitbucket.PullRequestRef
 import com.ykb.review.config.ConfigValidation
+import com.ykb.review.config.InstructionResolver
 import com.ykb.review.config.ReviewSettingsState
 import com.ykb.review.util.Cancellation
 import com.ykb.review.util.safeMessage
@@ -79,7 +80,7 @@ class ReviewCoordinator(private val settings: ReviewSettingsState = ReviewSettin
         val diff = bitbucket.getPullRequestDiff(ref)
         if (diff.isBlank()) throw IllegalStateException("Pull request diff içeriği boş.")
 
-        val instructions = settings.effectiveInstructions(settings.repoInstructionFor(ref))
+        val instructions = InstructionResolver(settings).forPullRequest(ref)
         val reviewInput = if (settings.maskSecretsInDiff) DiffFilter.maskSecrets(diff) else diff
 
         val review = ReviewEngine.review(
@@ -90,7 +91,7 @@ class ReviewCoordinator(private val settings: ReviewSettingsState = ReviewSettin
                 description = pr.description,
                 sourceBranch = pr.sourceBranch,
                 targetBranch = pr.destinationBranch,
-                extraInstructions = instructions,
+                extraInstructions = instructions.text,
             ),
             ReviewEngineOptions(
                 fastModel = fastModel,
@@ -103,7 +104,7 @@ class ReviewCoordinator(private val settings: ReviewSettingsState = ReviewSettin
                 },
                 onProgress = onProgress,
             ),
-        )
+        ).copy(instructionSources = instructions.summary)
         Cancellation.check()
 
         val outcome = ReviewOutcome(review, pr, diff, commitHash, published = false, skippedDuplicate = false)

@@ -30,6 +30,7 @@ import com.ykb.review.bitbucket.PullRequest
 import com.ykb.review.bitbucket.PullRequestRef
 import com.ykb.review.bitbucket.PullRequestUrlParser
 import com.ykb.review.config.ConfigValidation
+import com.ykb.review.config.InstructionResolver
 import com.ykb.review.config.ReviewSettingsState
 import com.ykb.review.local.LocalGit
 import com.ykb.review.local.LocalReviewScopeResolver
@@ -435,10 +436,8 @@ class ReviewSessionService(private val project: Project) {
                 val llm = LLMClient.fromSettings()
                 val reviews = snapshots.mapIndexed { index, (scope, snapshot) ->
                     val repoLabel = Paths.get(scope.root).fileName?.toString() ?: scope.root
-                    val baseInstructions = settings.effectiveInstructions(
-                        settings.repoInstructionForRemotes(LocalGit.remoteUrls(scope.root)),
-                    )
-                    val instructions = listOf(baseInstructions, scope.extraInstructions)
+                    val resolved = InstructionResolver(settings).forLocal(LocalGit.remoteUrls(scope.root))
+                    val instructions = listOf(resolved.text, scope.extraInstructions)
                         .filterNotNull()
                         .filter { it.isNotBlank() }
                         .joinToString("\n\nYerel inceleme kapsamı:\n")
@@ -462,9 +461,11 @@ class ReviewSessionService(private val project: Project) {
                             },
                         ),
                     )
-                    qualifyFindingPaths(review, scope.root, sessionRoot)
+                    qualifyFindingPaths(review, scope.root, sessionRoot).copy(instructionSources = resolved.summary)
                 }
-                val review = if (reviews.size == 1) reviews.single() else ReviewMerger.merge(reviews)
+                val review = if (reviews.size == 1) reviews.single() else ReviewMerger.merge(reviews).copy(
+                    instructionSources = reviews.mapNotNull { it.instructionSources }.distinct().joinToString(" / ").ifEmpty { null },
+                )
                 val title = if (snapshots.size == 1) snapshots.single().second.title
                 else "Yerel değişiklikler · ${snapshots.size} depo"
                 session = ReviewSession(title, review, null, sessionRoot)

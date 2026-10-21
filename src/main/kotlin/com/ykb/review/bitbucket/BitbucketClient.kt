@@ -180,12 +180,26 @@ class BitbucketClient(
         send("${pullRequestUrl(ref)}/comments", jsonBody = body.toString())
     }
 
-    fun addInlineComment(ref: PullRequestRef, text: String, location: InlineCommentLocation) {
+    /** Bitbucket arayüzünün satır yorumlarında kullandığı etkin diff commit'leri; alınamazsa null. */
+    fun getEffectiveDiffHashes(ref: PullRequestRef): DiffHashes? {
+        val page = JsonParser.parseString(send("${pullRequestUrl(ref)}/changes?limit=1")).obj()
+        val fromHash = page.str("fromHash")
+        val toHash = page.str("toHash")
+        return if (fromHash.isNotEmpty() && toHash.isNotEmpty()) DiffHashes(fromHash, toHash) else null
+    }
+
+    fun addInlineComment(ref: PullRequestRef, text: String, location: InlineCommentLocation, hashes: DiffHashes? = null) {
         require(text.isNotBlank()) { "Yorum metni boş olamaz." }
         val anchor = JsonObject().apply {
             addProperty("diffType", "EFFECTIVE")
+            // Hash'ler olmadan Bitbucket satırı diff'te bulamayıp yorumu dosya başına iliştirebiliyor.
+            if (hashes != null) {
+                addProperty("fromHash", hashes.fromHash)
+                addProperty("toHash", hashes.toHash)
+            }
             addProperty("path", location.path)
-            addProperty("srcPath", location.srcPath ?: location.path)
+            // srcPath yalnızca yeniden adlandırmada gönderilir; yeni dosyada var olmayan kaynak yolu anchor'ı bozar.
+            if (location.srcPath != null) addProperty("srcPath", location.srcPath)
             addProperty("line", location.line)
             addProperty("lineType", location.lineType)
             addProperty("fileType", if (location.side == "old") "FROM" else "TO")

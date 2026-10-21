@@ -569,6 +569,7 @@ class ReviewPanel(private val project: Project, parentDisposable: Disposable) : 
             <div>${SeverityStyle.badgeHtml("RİSK: ${review.riskLevel.uppercase()}", SeverityStyle.color(review.riskLevel))}</div>
             <div style='margin-top:6px;'><b>${FindingsPresenter.escape(current.title)}</b></div>
             <div style='color:$muted;'>${review.modelUsed?.let { "Model: ${FindingsPresenter.escape(it)}" } ?: ""}</div>
+            <div style='color:$muted;'>${review.instructionSources?.let { "Talimatlar: ${FindingsPresenter.escape(it)}" } ?: ""}</div>
             <div style='margin-top:8px;'>$counts</div>
             <p style='margin-top:12px; margin-bottom:2px;'><b>Özet</b></p>
             <div>${FindingsPresenter.textToHtml(review.summary, codeStyle)}</div>

@@ -9,3 +9,7 @@ out/
 *.log
 bin/
 
+
+# Sürüm paketleri (GitHub Releases üzerinden dağıtılır)
+*.zip
+.intellijPlatform/
