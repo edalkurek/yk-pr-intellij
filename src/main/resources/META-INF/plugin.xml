@@ -17,6 +17,10 @@
     ]]></description>
 
     <change-notes><![CDATA[
+        <h3>1.3.3 — Başlangıç hatası düzeltmesi</h3>
+        <ul>
+            <li><b>Git menüsü:</b> IDE açılışındaki "group with id Git.Menu isn't registered" hatası giderildi; Git menüsü girişi artık yalnızca Git eklentisi yüklüyse eklenir.</li>
+        </ul>
         <h3>1.3.2 — Seçime duyarlı yerel inceleme</h3>
         <ul>
             <li><b>Seçili class/dosya:</b> Changes görünümünde veya editörde seçili dosyalar varsa AI Review ikonu yalnızca bu dosyaların yerel değişikliklerini inceler.</li>
@@ -44,6 +48,8 @@
 
     <depends>com.intellij.modules.platform</depends>
     <depends>com.intellij.modules.vcs</depends>
+    <!-- Git.Menu grubu Git eklentisinde tanımlı; yalnızca Git yüklüyse menüye eklenir -->
+    <depends optional="true" config-file="ykb-review-git.xml">Git4Idea</depends>
 
     <extensions defaultExtensionNs="com.intellij">
         <!-- Uygulama geneli ayarlar -->
@@ -123,7 +129,6 @@
 
         <group id="YKB.Review.ActionGroup" text="YKB AI Review" popup="true" icon="AllIcons.Actions.Preview">
             <add-to-group group-id="ToolsMenu" anchor="last"/>
-            <add-to-group group-id="Git.Menu" anchor="last"/>
             <reference ref="YKB.Review.ListPullRequests"/>
             <reference ref="YKB.Review.ReviewUrl"/>
             <reference ref="YKB.Review.ShowPullRequestChanges"/>

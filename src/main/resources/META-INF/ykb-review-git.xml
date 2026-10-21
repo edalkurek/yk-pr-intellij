@@ -1,0 +1,8 @@
+<idea-plugin>
+    <!-- Yalnızca Git eklentisi yüklüyse yüklenir; Git.Menu grubu Git4Idea tarafından tanımlanır -->
+    <actions>
+        <reference ref="YKB.Review.ActionGroup">
+            <add-to-group group-id="Git.Menu" anchor="last"/>
+        </reference>
+    </actions>
+</idea-plugin>
