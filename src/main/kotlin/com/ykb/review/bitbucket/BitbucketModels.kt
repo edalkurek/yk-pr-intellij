@@ -34,6 +34,8 @@ data class PullRequestComment(
     val id: Long,
     val text: String,
     val deleted: Boolean,
+    /** Bitbucket Server'ın iyimser kilit sürümü; yorumu silmek için gerekir. */
+    val version: Int = 0,
 )
 
 /** Satır içi yorum konumu. side: "old" | "new", lineType: ADDED | REMOVED | CONTEXT */
@@ -43,6 +45,8 @@ data class InlineCommentLocation(
     val line: Int,
     val side: String,
     val lineType: String,
+    /** Satırın kodu (diff işareti olmadan); yalnızca yerelde tekrar anahtarı için kullanılır, Bitbucket'a gönderilmez. */
+    val content: String? = null,
 )
 
 /** PR'ın etkin (EFFECTIVE) diff'ini tanımlayan commit'ler; satır yorumu anchor'ı bu diff'e bağlanır. */

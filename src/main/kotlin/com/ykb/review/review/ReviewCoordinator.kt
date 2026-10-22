@@ -113,9 +113,12 @@ class ReviewCoordinator(private val settings: ReviewSettingsState = ReviewSettin
     fun publish(outcome: ReviewOutcome, client: BitbucketClient = BitbucketClient.fromSettings()): ReviewOutcome {
         val ref = outcome.pullRequest.ref
         val key = reviewKey(ref, outcome.commitHash)
-        if (settings.isPublished(key) ||
-            client.hasComment(ref) { CommentFormatter.matchesExistingReview(it, ref.pullRequestId, outcome.commitHash) }
-        ) {
+        if (settings.isPublished(key)) {
+            log.info("PR #${ref.pullRequestId}: aynı commit için yorum zaten mevcut.")
+            return outcome.copy(skippedDuplicate = true)
+        }
+        val existingComments = client.listComments(ref).filter { !it.deleted }.map { it.text }
+        if (existingComments.any { CommentFormatter.matchesExistingReview(it, ref.pullRequestId, outcome.commitHash) }) {
             log.info("PR #${ref.pullRequestId}: aynı commit için yorum zaten mevcut.")
             return outcome.copy(skippedDuplicate = true)
         }
@@ -127,7 +130,11 @@ class ReviewCoordinator(private val settings: ReviewSettingsState = ReviewSettin
             outcome.commitHash,
             outcome.review.modelUsed ?: settings.modelName,
         )
-        val publication = PublishService.publish(client, ref, outcome.review, outcome.diff, key, marker, publicationState) { finding ->
+        val publication = PublishService.publish(
+            client, ref, outcome.review, outcome.diff, key, marker, publicationState,
+            existingComments = existingComments,
+            reviewKey = CommentFormatter.markerKey(ref.pullRequestId, outcome.commitHash),
+        ) { finding ->
             val reason = when {
                 finding.line == null -> "Model geçerli satır konumu döndürmedi."
                 finding.side == null -> "Taraf bilgisi eksik; konum diff üzerinde tek bir satırla eşleştirilemedi."
@@ -136,6 +143,13 @@ class ReviewCoordinator(private val settings: ReviewSettingsState = ReviewSettin
             log.info("PR #${ref.pullRequestId}: satır yorumu genel yoruma alındı (${finding.file}:${finding.line}:${finding.side}). $reason")
         }
         settings.markPublished(key)
+        if (publication.supersededBy != null) {
+            log.info("PR #${ref.pullRequestId}: bir ekip arkadaşının aynı commit için incelemesi daha önce yayımlandı (yorum #${publication.supersededBy}); bu incelemenin yorumları geri alındı.")
+            return outcome.copy(skippedDuplicate = true)
+        }
+        if (publication.skippedExisting > 0) {
+            log.info("PR #${ref.pullRequestId}: ${publication.skippedExisting} bulgu daha önce yorum yazılmış satırlarda olduğu için tekrar yazılmadı.")
+        }
         log.info("PR #${ref.pullRequestId}: ${publication.inlineComments} satır yorumu ve 1 genel yorum yayımlandı.")
         return outcome.copy(published = true, publication = publication)
     }

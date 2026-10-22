@@ -5,6 +5,7 @@ import com.google.gson.JsonParser
 import com.ykb.review.ai.ReviewFinding
 import com.ykb.review.ai.ReviewResult
 import com.ykb.review.bitbucket.BitbucketClient
+import com.ykb.review.bitbucket.InlineCommentLocation
 import com.ykb.review.bitbucket.PullRequestRef
 import okhttp3.OkHttpClient
 import okhttp3.mockwebserver.Dispatcher
@@ -38,6 +39,10 @@ class PublishServiceTest {
     private val comments = mutableListOf<JsonObject>()
     private var changesStatus = 200
     private var rejectEmojiOnce = false
+    /** Başka bir ekip arkadaşının PR'da zaten bulunan yorumları (id → metin). */
+    private val othersComments = mutableMapOf<Long, String>()
+    private val deletedPaths = mutableListOf<String>()
+    private var nextId = 100L
 
     private class MemoryState : PublicationState {
         val keys = mutableSetOf<String>()
@@ -67,8 +72,32 @@ class PublishServiceTest {
                         rejectEmojiOnce = false
                         return MockResponse().setResponseCode(400)
                     }
-                    synchronized(comments) { comments.add(body) }
-                    return MockResponse().setResponseCode(201).setBody("{}")
+                    val id = synchronized(comments) {
+                        comments.add(body)
+                        nextId++
+                    }
+                    return MockResponse().setResponseCode(201).setBody("""{"id":$id,"version":0}""")
+                }
+                if (request.method == "DELETE") {
+                    synchronized(deletedPaths) { deletedPaths.add(path) }
+                    return MockResponse().setResponseCode(204)
+                }
+                if (path.contains("/activities")) {
+                    val values = com.google.gson.JsonArray()
+                    val own = synchronized(comments) { comments.mapIndexed { i, body -> 100L + i to body.get("text").asString } }
+                    for ((id, text) in othersComments + own) {
+                        values.add(JsonObject().apply {
+                            add("comment", JsonObject().apply {
+                                addProperty("id", id)
+                                addProperty("text", text)
+                                addProperty("version", 0)
+                            })
+                        })
+                    }
+                    return MockResponse().setBody(JsonObject().apply {
+                        add("values", values)
+                        addProperty("isLastPage", true)
+                    }.toString())
                 }
                 return MockResponse().setResponseCode(404)
             }
@@ -154,5 +183,57 @@ class PublishServiceTest {
         publish(review(finding(3)), state)
 
         assertEquals(firstCount, comments.size)
+    }
+
+    @Test
+    fun `satir anahtari VS Code eklentisiyle birebir aynidir`() {
+        // Beklenen değerler Node.js ile: sha256(JSON.stringify([path, content])).slice(0, 32)
+        fun key(content: String?, line: Int = 7) =
+            PublishService.lineCommentKey(InlineCommentLocation("src/A.kt", null, line, "new", "ADDED", content))
+        assertEquals("bitbucket-ai-review:line=cc9f54aa8147aae6db9fca27f5453b80", key("new2"))
+        assertEquals("bitbucket-ai-review:line=c7833380d3643b6851aa9a8b3f8a5cc9", key("  if (a < b && c == \"x\") { return 'ü'; }  "))
+        assertEquals("bitbucket-ai-review:line=0e2bc6f33616e601f11b794fe1205189", key(null))
+    }
+
+    @Test
+    fun `daha once yorum yazilmis satir baska model veya kisi tarafindan tekrar yorumlanmaz`() {
+        publish(review(finding(3)))
+        val existing = comments.map { it.get("text").asString }
+        comments.clear()
+
+        // Aynı satır, farklı ifade ve bulgu türü.
+        val other = ReviewFinding("src/A.kt", 3, "new", "medium", "security", "Başka ifade", "Başka öneri")
+        val result = PublishService.publish(client, ref, review(other), diff, "k2", "<!-- marker -->", MemoryState(), existingComments = existing)
+
+        assertEquals(1, result.skippedExisting)
+        assertTrue(comments.none { it.has("anchor") })
+    }
+
+    @Test
+    fun `ayni commit icin once yayimlanan inceleme kalir, sonraki kendi yorumlarini siler`() {
+        val key = CommentFormatter.markerKey(7, "abc")
+        othersComments[50L] = "Özet\n\n[//]: # (${key}model=baska)"
+
+        val result = PublishService.publish(
+            client, ref, review(finding(3)), diff, "k", CommentFormatter.createMarker(7, "abc", "m"), MemoryState(), reviewKey = key,
+        )
+
+        assertEquals(50L, result.supersededBy)
+        assertEquals(2, deletedPaths.size)
+        assertTrue(deletedPaths.all { it.contains("/comments/10") && it.contains("version=0") })
+    }
+
+    @Test
+    fun `ilk yayimlanan inceleme yorumlarini korur`() {
+        val key = CommentFormatter.markerKey(7, "abc")
+        othersComments[500L] = "Sonraki inceleme [//]: # (${key}model=baska)"
+
+        val result = PublishService.publish(
+            client, ref, review(finding(3)), diff, "k", CommentFormatter.createMarker(7, "abc", "m"), MemoryState(), reviewKey = key,
+        )
+
+        assertEquals(null, result.supersededBy)
+        assertEquals(1, result.inlineComments)
+        assertTrue(deletedPaths.isEmpty())
     }
 }

@@ -95,6 +95,16 @@ IntelliJ IDEA içerisinde:
 
 ---
 
+## 👥 Ekip Kullanımında Tekrar Önleme
+
+Eklentiyi ekipte birden fazla kişi (IntelliJ veya VS Code, farklı modellerle) kullandığında aynı yorumların tekrarlanmaması için:
+
+- **Commit başına tek inceleme:** Bir PR commit'i için ekipten biri yorum yayımladıysa, diğerleri model veya IDE fark etmeksizin tekrar yayımlamaz.
+- **Eşzamanlı yayın:** İki kişi aynı commit'i aynı anda yayımlarsa Bitbucket'ta önce kaydedilen inceleme kalır; sonra gelen kendi yorumlarını otomatik siler.
+- **Satır başına tek yorum:** Önceki bir commit'te veya başka bir kişinin incelemesinde yorum yazılmış bir kod satırına tekrar satır yorumu yazılmaz. Satır numarasına göre değil koduna göre tanınır; satır kaysa da eşleşir.
+
+---
+
 ## 📚 Ortak Talimat Reposu
 
 Ekipteki herkesin aynı inceleme kurallarını kullanması için kurallar her geliştiricinin IDE'sine tek tek girilmez; Bitbucket'taki ortak bir repoda Markdown dosyaları olarak tutulur. Eklenti bir PR'ı veya yerel değişikliği incelerken, o repoya ait kuralları bu repodan otomatik okur. Kural değişiklikleri PR ile önerilir ve ekipçe gözden geçirilir; birleştiği anda herkese yansır.

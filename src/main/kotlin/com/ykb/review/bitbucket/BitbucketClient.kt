@@ -174,10 +174,31 @@ class BitbucketClient(
         }
     }
 
-    fun addGeneralComment(ref: PullRequestRef, text: String) {
+    /** PR'daki tüm yorumlar (yanıtlar dahil); silinmişler de döner. */
+    fun listComments(ref: PullRequestRef): List<PullRequestComment> {
+        val result = LinkedHashMap<Long, PullRequestComment>()
+        fun visitThread(comment: JsonObject) {
+            val parsed = toComment(comment)
+            if (!result.containsKey(parsed.id)) result[parsed.id] = parsed
+            comment.get("comments").arr().forEach { visitThread(it.obj()) }
+        }
+        paginate("${pullRequestUrl(ref)}/activities?limit=100") { activity ->
+            val comment = activity.get("comment").obj()
+            if (comment.size() > 0) visitThread(comment)
+            false
+        }
+        return result.values.toList()
+    }
+
+    fun addGeneralComment(ref: PullRequestRef, text: String): PullRequestComment {
         require(text.isNotBlank()) { "Yorum metni boş olamaz." }
         val body = JsonObject().apply { addProperty("text", text) }
-        send("${pullRequestUrl(ref)}/comments", jsonBody = body.toString())
+        return toComment(JsonParser.parseString(send("${pullRequestUrl(ref)}/comments", jsonBody = body.toString())).obj())
+    }
+
+    /** Eklentinin attığı bir yorumu siler (aynı commit için bir ekip arkadaşının incelemesi önce yayımlandığında). */
+    fun deleteComment(ref: PullRequestRef, comment: PullRequestComment) {
+        send("${pullRequestUrl(ref)}/comments/${comment.id}?version=${comment.version}", method = "DELETE")
     }
 
     /** Bitbucket arayüzünün satır yorumlarında kullandığı etkin diff commit'leri; alınamazsa null. */
@@ -188,7 +209,7 @@ class BitbucketClient(
         return if (fromHash.isNotEmpty() && toHash.isNotEmpty()) DiffHashes(fromHash, toHash) else null
     }
 
-    fun addInlineComment(ref: PullRequestRef, text: String, location: InlineCommentLocation, hashes: DiffHashes? = null) {
+    fun addInlineComment(ref: PullRequestRef, text: String, location: InlineCommentLocation, hashes: DiffHashes? = null): PullRequestComment {
         require(text.isNotBlank()) { "Yorum metni boş olamaz." }
         val anchor = JsonObject().apply {
             addProperty("diffType", "EFFECTIVE")
@@ -208,10 +229,17 @@ class BitbucketClient(
             addProperty("text", text)
             add("anchor", anchor)
         }
-        send("${pullRequestUrl(ref)}/comments", jsonBody = body.toString())
+        return toComment(JsonParser.parseString(send("${pullRequestUrl(ref)}/comments", jsonBody = body.toString())).obj())
     }
 
     // ---------------------------------------------------------------- internals
+
+    private fun toComment(item: JsonObject): PullRequestComment = PullRequestComment(
+        id = item.long("id") ?: 0L,
+        text = item.str("text"),
+        deleted = item.bool("deleted"),
+        version = (item.long("version") ?: 0L).toInt(),
+    )
 
     private fun pullRequestUrl(ref: PullRequestRef): String =
         "$apiBaseUrl/projects/${encode(ref.projectKey)}/repos/${encode(ref.repositorySlug)}/pull-requests/${ref.pullRequestId}"
@@ -232,10 +260,10 @@ class BitbucketClient(
         }
     }
 
-    private fun send(url: String, accept: String = "application/json", jsonBody: String? = null): String =
-        exchange(url, accept, jsonBody) { it.body?.string().orEmpty() }
+    private fun send(url: String, accept: String = "application/json", jsonBody: String? = null, method: String? = null): String =
+        exchange(url, accept, jsonBody, method) { it.body?.string().orEmpty() }
 
-    private fun <T> exchange(url: String, accept: String, jsonBody: String?, read: (Response) -> T): T {
+    private fun <T> exchange(url: String, accept: String, jsonBody: String?, method: String? = null, read: (Response) -> T): T {
         if (Http.origin(url) != allowedOrigin) {
             throw IllegalStateException("Bitbucket kimlik bilgisi beklenmeyen bir adrese gönderilmeyecek.")
         }
@@ -247,7 +275,11 @@ class BitbucketClient(
                 .header("Accept", accept)
                 .header("Authorization", "Bearer $token")
                 .header("X-Atlassian-Token", "no-check")
-            if (jsonBody != null) builder.post(jsonBody.toRequestBody(Http.JSON)) else builder.get()
+            when {
+                method == "DELETE" -> builder.delete()
+                jsonBody != null -> builder.post(jsonBody.toRequestBody(Http.JSON))
+                else -> builder.get()
+            }
 
             val response = Http.execute(http, builder.build())
             val code = response.code

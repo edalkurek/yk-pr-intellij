@@ -50,17 +50,17 @@ object DiffLocations {
                 val path = newPath.ifEmpty { oldPath }
                 val srcPath = if (oldPath.isNotEmpty() && newPath.isNotEmpty() && oldPath != newPath) oldPath else null
                 if (text.startsWith("+") && newRemaining > 0) {
-                    if (path.isNotEmpty()) result.add(DiffLine(index, InlineCommentLocation(path, srcPath, newLine, "new", "ADDED")))
+                    if (path.isNotEmpty()) result.add(DiffLine(index, InlineCommentLocation(path, srcPath, newLine, "new", "ADDED", text.substring(1))))
                     newLine++
                     newRemaining--
                 } else if (text.startsWith("-") && oldRemaining > 0) {
-                    if (path.isNotEmpty()) result.add(DiffLine(index, InlineCommentLocation(path, srcPath, oldLine, "old", "REMOVED")))
+                    if (path.isNotEmpty()) result.add(DiffLine(index, InlineCommentLocation(path, srcPath, oldLine, "old", "REMOVED", text.substring(1))))
                     oldLine++
                     oldRemaining--
                 } else if (text.startsWith(" ") && oldRemaining > 0 && newRemaining > 0) {
                     if (path.isNotEmpty()) {
-                        result.add(DiffLine(index, InlineCommentLocation(path, srcPath, oldLine, "old", "CONTEXT")))
-                        result.add(DiffLine(index, InlineCommentLocation(path, srcPath, newLine, "new", "CONTEXT")))
+                        result.add(DiffLine(index, InlineCommentLocation(path, srcPath, oldLine, "old", "CONTEXT", text.substring(1))))
+                        result.add(DiffLine(index, InlineCommentLocation(path, srcPath, newLine, "new", "CONTEXT", text.substring(1))))
                     }
                     oldLine++
                     newLine++

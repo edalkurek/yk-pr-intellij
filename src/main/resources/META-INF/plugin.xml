@@ -17,6 +17,12 @@
     ]]></description>
 
     <change-notes><![CDATA[
+        <h3>1.6.0 — Ekip kullanımında tekrar yorum önleme</h3>
+        <ul>
+            <li><b>Commit başına tek inceleme:</b> Ekipten biri bir commit için yorum yayımladıysa (VS Code veya IntelliJ, hangi model olursa olsun) tekrar yayımlanmaz.</li>
+            <li><b>Eşzamanlı yayın:</b> İki kişi aynı commit'i aynı anda yayımlarsa Bitbucket'ta önce kaydedilen kalır; sonra gelen kendi yorumlarını siler.</li>
+            <li><b>Satır başına tek yorum:</b> Daha önce yorum yazılmış bir kod satırına (satır kaysa da) tekrar satır yorumu yazılmaz.</li>
+        </ul>
         <h3>1.5.1 — Repo adresiyle talimat reposu</h3>
         <ul>
             <li><b>Ortak talimat reposu:</b> PROJE/slug yerine Bitbucket repo adresi de girilebilir; kişisel repolar (…/users/&lt;kullanıcı&gt;/repos/&lt;repo&gt;) desteklenir.</li>
