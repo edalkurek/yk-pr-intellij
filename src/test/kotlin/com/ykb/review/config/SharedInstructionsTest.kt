@@ -107,6 +107,20 @@ class SharedInstructionsTest {
     }
 
     @Test
+    fun `repo ayari Bitbucket repo adresini ve kisisel repoyu kabul eder`() {
+        assertEquals(
+            SharedRulesRepo("SDLC", "rules", "master"),
+            SharedRulesRepo.parse("https://git.test/bitbucket/projects/SDLC/repos/rules/browse", ""),
+        )
+        // Kişisel repo REST API'de ~kullanıcı projesidir.
+        assertEquals(
+            SharedRulesRepo("~t0101505", "ai-review-rules", "master"),
+            SharedRulesRepo.parse("https://git.test/bitbucket/users/t0101505/repos/ai-review-rules/browse", ""),
+        )
+        assertNull(SharedRulesRepo.parse("https://git.test/bitbucket/users/t0101505", "master"))
+    }
+
+    @Test
     fun `ortak katman yoksa talimat metni eski bicimde kalir`() {
         val settings = ReviewSettingsState().apply {
             extraInstructions = "genel kural"

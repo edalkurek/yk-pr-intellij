@@ -81,7 +81,7 @@ class ReviewSettingsComponent {
     }
     val repoInstructionsTable = JBTable(repoInstructionsModel)
 
-    val sharedRulesRepoField = JBTextField().apply { emptyText.text = "PROJE/repo-slug" }
+    val sharedRulesRepoField = JBTextField().apply { emptyText.text = "PROJE/repo-slug veya Bitbucket repo adresi" }
     val sharedRulesBranchField = JBTextField()
     private val testSharedRulesBtn = JButton("Test Et / Yenile")
     private val sharedRulesTestResult = JBLabel()
@@ -275,7 +275,7 @@ class ReviewSettingsComponent {
     private fun testSharedRules() {
         val repo = SharedRulesRepo.parse(sharedRulesRepoField.text, sharedRulesBranchField.text)
         if (repo == null) {
-            showResult(sharedRulesTestResult, false, "Repo PROJE/slug biçiminde olmalı (ör. SDLC/ai-review-rules).")
+            showResult(sharedRulesTestResult, false, "Repo PROJE/slug biçiminde veya Bitbucket repo adresi olmalı (ör. SDLC/ai-review-rules).")
             return
         }
         withProgress("Ortak talimat reposu okunuyor…") {

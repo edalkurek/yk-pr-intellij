@@ -15,11 +15,25 @@ data class InstructionLayer(val source: String, val text: String) {
 /** Ortak talimat reposunun konumu (`PROJECT/slug` + dal). */
 data class SharedRulesRepo(val projectKey: String, val slug: String, val branch: String) {
     companion object {
-        /** `PROJECT/slug` biçimini çözer; boş veya geçersizse null. */
+        /**
+         * `PROJECT/slug` biçimini veya Bitbucket'taki repo adresini (`…/projects/P/repos/r…`, kişisel repo için
+         * `…/users/u/repos/r…`) çözer; boş veya geçersizse null. Kişisel repolar REST API'de `~u` projesidir.
+         */
         fun parse(value: String, branch: String): SharedRulesRepo? {
-            val parts = value.trim().trim('/').split('/')
+            val text = value.trim()
+            val resolvedBranch = branch.trim().ifEmpty { "master" }
+            if (text.contains("://")) {
+                val segments = text.substringAfter("://").substringBefore('?').substringBefore('#').split('/').drop(1).filter { it.isNotEmpty() }
+                val owner = segments.indices.firstOrNull { i ->
+                    segments[i].lowercase() in setOf("projects", "users") &&
+                        segments.getOrNull(i + 2).equals("repos", ignoreCase = true) && segments.getOrNull(i + 3) != null
+                } ?: return null
+                val key = if (segments[owner].equals("users", ignoreCase = true)) "~${segments[owner + 1]}" else segments[owner + 1]
+                return SharedRulesRepo(key, segments[owner + 3], resolvedBranch)
+            }
+            val parts = text.trim('/').split('/')
             if (parts.size != 2 || parts.any { it.isBlank() }) return null
-            return SharedRulesRepo(parts[0].trim(), parts[1].trim(), branch.trim().ifEmpty { "master" })
+            return SharedRulesRepo(parts[0].trim(), parts[1].trim(), resolvedBranch)
         }
     }
 }

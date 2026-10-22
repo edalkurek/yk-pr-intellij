@@ -55,7 +55,7 @@ class ReviewSettingsConfigurable : Configurable {
             ConfigValidation.interval(ui.interval)
             val sharedRepo = ui.sharedRulesRepoField.text.trim()
             if (sharedRepo.isNotEmpty() && SharedRulesRepo.parse(sharedRepo, ui.sharedRulesBranchField.text) == null) {
-                throw ConfigurationError("Ortak talimat reposu PROJE/slug biçiminde olmalıdır (ör. SDLC/ai-review-rules).")
+                throw ConfigurationError("Ortak talimat reposu PROJE/slug biçiminde veya Bitbucket repo adresi olmalıdır (ör. SDLC/ai-review-rules).")
             }
         } catch (e: ConfigurationError) {
             throw ConfigurationException(e.message, "YKB AI Code Review")
