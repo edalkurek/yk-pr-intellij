@@ -1,5 +1,6 @@
 package com.ykb.review.ui
 
+import com.ykb.review.ai.DiffLocations
 import com.intellij.openapi.Disposable
 import com.intellij.openapi.application.ApplicationManager
 import com.intellij.openapi.components.Service
@@ -75,7 +76,7 @@ class FindingsHighlighter(private val project: Project) : Disposable {
     }
 
     private fun normalize(root: String, file: String): String {
-        val relative = file.replace(Regex("^[ab]/"), "")
+        val relative = file.replace(DiffLocations.PATH_PREFIX, "")
         val path = Paths.get(relative).let { if (it.isAbsolute) it else Paths.get(root).resolve(relative) }
         return path.normalize().toString().lowercase()
     }

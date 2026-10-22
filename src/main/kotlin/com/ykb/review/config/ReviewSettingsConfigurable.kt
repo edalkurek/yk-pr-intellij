@@ -31,13 +31,8 @@ class ReviewSettingsConfigurable : Configurable {
             ui.autoReviewEnabledCheck.isSelected != s.automaticReviewEnabled ||
             ui.interval != s.automaticReviewIntervalMinutes ||
             ui.aiBaseUrlField.text.trim() != s.aiBaseUrl ||
-            ui.fastModel != s.fastModelName ||
-            ui.complexModel != s.complexModelName ||
-            ui.minSeverityCombo.selectedItem != s.minSeverity ||
-            ui.maxChunkChars != s.maxChunkChars ||
+            ui.model != s.modelName ||
             ui.extraInstructionsArea.text.trim() != s.extraInstructions ||
-            ui.maskSecretsCheck.isSelected != s.maskSecretsInDiff ||
-            ui.disableTlsCheck.isSelected != s.disableTlsVerification ||
             ui.publicationModeCombo.selectedItem != s.publicationMode ||
             ui.openDiffAfterReviewCheck.isSelected != s.openDiffAfterReview ||
             ui.showInlaysCheck.isSelected != s.showFindingInlays ||
@@ -52,13 +47,11 @@ class ReviewSettingsConfigurable : Configurable {
 
         val bitbucketUrl: String
         val aiUrl: String
-        val fast: String
-        val complex: String
+        val model: String
         try {
             bitbucketUrl = ConfigValidation.bitbucketBaseUrl(ui.bitbucketUrlField.text)
             aiUrl = ConfigValidation.modelBaseUrl(ui.aiBaseUrlField.text)
-            fast = ConfigValidation.modelName(ui.fastModel, "Hızlı model")
-            complex = ConfigValidation.modelName(ui.complexModel, "Güçlü model")
+            model = ConfigValidation.modelName(ui.model, "Model")
             ConfigValidation.interval(ui.interval)
             val sharedRepo = ui.sharedRulesRepoField.text.trim()
             if (sharedRepo.isNotEmpty() && SharedRulesRepo.parse(sharedRepo, ui.sharedRulesBranchField.text) == null) {
@@ -75,15 +68,10 @@ class ReviewSettingsConfigurable : Configurable {
 
         s.bitbucketBaseUrl = bitbucketUrl
         s.aiBaseUrl = aiUrl
-        s.fastModelName = fast
-        s.complexModelName = complex
+        s.modelName = model
         s.automaticReviewEnabled = ui.autoReviewEnabledCheck.isSelected
         s.automaticReviewIntervalMinutes = ui.interval
-        s.minSeverity = (ui.minSeverityCombo.selectedItem as? String) ?: "low"
-        s.maxChunkChars = ui.maxChunkChars
         s.extraInstructions = ui.extraInstructionsArea.text.trim()
-        s.maskSecretsInDiff = ui.maskSecretsCheck.isSelected
-        s.disableTlsVerification = ui.disableTlsCheck.isSelected
         s.publicationMode = (ui.publicationModeCombo.selectedItem as? String) ?: ReviewSettingsState.PUBLICATION_ASK
         s.openDiffAfterReview = ui.openDiffAfterReviewCheck.isSelected
         s.showFindingInlays = ui.showInlaysCheck.isSelected
@@ -105,15 +93,10 @@ class ReviewSettingsConfigurable : Configurable {
         val ui = ui ?: return
         ui.bitbucketUrlField.text = s.bitbucketBaseUrl
         ui.aiBaseUrlField.text = s.aiBaseUrl
-        ui.fastModelCombo.selectedItem = s.fastModelName
-        ui.complexModelCombo.selectedItem = s.complexModelName
+        ui.modelCombo.selectedItem = s.modelName
         ui.autoReviewEnabledCheck.isSelected = s.automaticReviewEnabled
         ui.autoReviewIntervalSpinner.value = s.automaticReviewIntervalMinutes.coerceIn(1, 1440)
-        ui.minSeverityCombo.selectedItem = s.minSeverity
-        ui.maxChunkCharsSpinner.value = s.maxChunkChars.coerceIn(5_000, 500_000)
         ui.extraInstructionsArea.text = s.extraInstructions
-        ui.maskSecretsCheck.isSelected = s.maskSecretsInDiff
-        ui.disableTlsCheck.isSelected = s.disableTlsVerification
         ui.publicationModeCombo.selectedItem = s.publicationMode
         ui.openDiffAfterReviewCheck.isSelected = s.openDiffAfterReview
         ui.showInlaysCheck.isSelected = s.showFindingInlays

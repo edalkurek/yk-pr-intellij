@@ -1,5 +1,6 @@
 package com.ykb.review.ui
 
+import com.ykb.review.ai.DiffLocations
 import com.intellij.icons.AllIcons
 import com.intellij.ide.BrowserUtil
 import com.intellij.openapi.Disposable
@@ -642,7 +643,7 @@ class ReviewPanel(private val project: Project, parentDisposable: Disposable) : 
 
     private fun resolveFile(finding: ReviewFinding): java.io.File? {
         val root = session.current?.root ?: project.basePath ?: return null
-        val relative = finding.file.replace(Regex("^[ab]/"), "")
+        val relative = finding.file.replace(DiffLocations.PATH_PREFIX, "")
         return Paths.get(root).resolve(relative).normalize().toFile()
     }
 

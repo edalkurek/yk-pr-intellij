@@ -1,5 +1,6 @@
 package com.ykb.review.ui
 
+import com.ykb.review.ai.DiffLocations
 import com.intellij.ide.BrowserUtil
 import com.intellij.notification.NotificationType
 import com.intellij.openapi.application.ApplicationManager
@@ -441,17 +442,17 @@ class ReviewSessionService(private val project: Project) {
                         .filterNotNull()
                         .filter { it.isNotBlank() }
                         .joinToString("\n\nYerel inceleme kapsamı:\n")
-                    val input = if (settings.maskSecretsInDiff) DiffFilter.maskSecrets(snapshot.diff) else snapshot.diff
+                    val input = DiffFilter.maskSecrets(snapshot.diff)
+                    val model = ConfigValidation.modelName(settings.modelName, "Model adı")
                     val review = ReviewEngine.review(
                         ChatClient { model, messages -> llm.chat(model, messages) },
                         input,
                         ReviewContext(title = "${snapshot.title} · $repoLabel", extraInstructions = instructions),
                         ReviewEngineOptions(
-                            fastModel = settings.fastModelName.trim(),
-                            complexModel = ConfigValidation.modelName(settings.complexModelName, "Güçlü model (Tier 2) adı"),
-                            maxChunkChars = settings.maxChunkChars.coerceAtLeast(4_000),
+                            fastModel = model,
+                            complexModel = model,
+                            maxChunkChars = ReviewSettingsState.DEFAULT_MAX_CHUNK_CHARS,
                             failOnChunkError = true,
-                            minSeverity = settings.minSeverity,
                             onProgress = { step, fraction ->
                                 val overall = (index + fraction) / snapshots.size
                                 val text = if (snapshots.size == 1) step else "$repoLabel (${index + 1}/${snapshots.size}) · $step"
@@ -515,7 +516,7 @@ class ReviewSessionService(private val project: Project) {
         val repository = Paths.get(repositoryRoot).toAbsolutePath().normalize()
         val session = Paths.get(sessionRoot).toAbsolutePath().normalize()
         return review.copy(findings = review.findings.map { finding ->
-            val raw = finding.file.replace(Regex("^[ab]/"), "")
+            val raw = finding.file.replace(DiffLocations.PATH_PREFIX, "")
             val absolute = Paths.get(raw).let { if (it.isAbsolute) it else repository.resolve(it) }.normalize()
             val display = relativeToOrNull(session, absolute)?.toString() ?: absolute.toString()
             finding.copy(file = display.replace('\\', '/'))

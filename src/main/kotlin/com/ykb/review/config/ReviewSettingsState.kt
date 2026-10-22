@@ -30,17 +30,16 @@ class ReviewSettingsState : PersistentStateComponent<ReviewSettingsState> {
     /** ESKİ SÜRÜM ALANI: bkz. [bitbucketToken]. */
     var aiApiKey: String = ""
 
-    // Model Katmanları (Tiered Engine)
-    var fastModelName: String = DEFAULT_FAST_MODEL
-    var complexModelName: String = DEFAULT_COMPLEX_MODEL
+    var modelName: String = DEFAULT_MODEL
+
+    /** ESKİ SÜRÜM ALANI: iki modelli sürümün güçlü modeli; [loadState] değeri [modelName] alanına taşır. */
+    var complexModelName: String = ""
 
     // Otomatik Arka Plan Review
     var automaticReviewEnabled: Boolean = false
     var automaticReviewIntervalMinutes: Int = 5
 
-    // İnceleme Parametreleri & Repo Bazlı Talimatlar
-    var minSeverity: String = "low" // low, medium, high
-    var maxChunkChars: Int = DEFAULT_MAX_CHUNK_CHARS
+    // İnceleme Talimatları
     var extraInstructions: String = ""
 
     /** Anahtar: `host/projectKey/repoSlug` (küçük harf, VS Code eklentisiyle aynı). Eski sürümlerden kalan yalnızca-slug anahtarlar da desteklenir. */
@@ -49,11 +48,6 @@ class ReviewSettingsState : PersistentStateComponent<ReviewSettingsState> {
     /** Ortak talimat reposu (`PROJECT/slug`, aynı Bitbucket sunucusunda); boşsa yalnızca IDE talimatları kullanılır. */
     var sharedRulesRepo: String = ""
     var sharedRulesBranch: String = "master"
-
-    var maskSecretsInDiff: Boolean = true
-
-    /** Kurumsal ortamda sertifika doğrulamasını tamamen kapatır (VS Code eklentisinin varsayılan davranışı). */
-    var disableTlsVerification: Boolean = false
 
     // Arayüz tercihleri
     /** İnceleme sonucunun işlenme biçimi: "ask" (her seferinde sor) | "ide" (yalnızca IDE) | "publish" (Bitbucket'a yaz). */
@@ -138,18 +132,22 @@ class ReviewSettingsState : PersistentStateComponent<ReviewSettingsState> {
 
     override fun loadState(state: ReviewSettingsState) {
         XmlSerializerUtil.copyBean(state, this)
+        if (complexModelName.isNotBlank()) {
+            modelName = complexModelName
+            complexModelName = ""
+        }
     }
 
     companion object {
         const val DEFAULT_BITBUCKET_URL = "https://sdlc.yapikredi.com.tr/bitbucket"
         const val DEFAULT_MODEL_URL = "https://bifrost-proxy-server-dsp-ddi.apps.lan-dev-dc1-ocp.yapikredi.com.tr/v1"
-        const val DEFAULT_FAST_MODEL = "cyankiwi/Qwen3.6-35B-A3B-AWQ-4bit"
-        const val DEFAULT_COMPLEX_MODEL = "openai/gpt-oss-120b"
+        const val DEFAULT_MODEL = "openai/gpt-oss-120b"
+        private const val ALTERNATIVE_MODEL = "cyankiwi/Qwen3.6-35B-A3B-AWQ-4bit"
         const val DEFAULT_MAX_CHUNK_CHARS = 60_000
         const val PUBLICATION_ASK = "ask"
         const val PUBLICATION_IDE = "ide"
         const val PUBLICATION_PUBLISH = "publish"
-        val PRESET_MODELS = listOf(DEFAULT_FAST_MODEL, DEFAULT_COMPLEX_MODEL)
+        val PRESET_MODELS = listOf(DEFAULT_MODEL, ALTERNATIVE_MODEL)
         private const val MAX_PUBLISHED_KEYS = 5000
 
         val instance: ReviewSettingsState

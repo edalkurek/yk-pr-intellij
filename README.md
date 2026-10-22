@@ -6,10 +6,7 @@ Bu proje, Bitbucket Server / Data Center PR'larını ve yerel Git değişiklikle
 
 ## 🌟 Öne Çıkan Özellikler
 
-1. **Çift Katmanlı Model Mimarisi (Tiered AI Engine):**
-   - **Tier 1 (Hızlı Model - sağlayıcınızın küçük/düşük maliyetli modeli):** Rutin kod değişiklikleri, trivial kontroller, metadata ve dokümantasyon analizi.
-   - **Tier 2 (Güçlü Model - sağlayıcınızın en yetenekli muhakeme/kod modeli):** Güvenlik (SQLi, Auth, Token, Leakage), concurrency/transaction, karmaşık mimari ve çok dosyalı backend değişiklikleri.
-   - **Smart Model Router:** Değişiklikleri diff içeriği, dosya tipi ve hassasiyetine göre otomatik olarak en uygun modele yönlendirir.
+1. **Tek Model:** Tüm incelemeler ayarlarda seçilen model ile yapılır.
 2. **Doğrudan Bitbucket Entegrasyonu (yalnızca Bitbucket Server / Data Center; Bitbucket Cloud desteklenmez):**
    - Açık PR listesi çekme
    - Tek tıkla diff analizi ve inceleme başlatma
@@ -91,8 +88,7 @@ IntelliJ IDEA içerisinde:
 - **Access Token:** Bitbucket HTTP Access Token
 - **AI Base URL:** OpenAI uyumlu `/chat/completions` uç noktası sunan sağlayıcı veya kurum içi model gateway URL'i
 - **API Key:** LLM API anahtarı
-- **Hızlı Model (Tier 1):** Sağlayıcınızda/gateway'inizde tanımlı hızlı, düşük maliyetli model adı
-- **Güçlü Model (Tier 2):** Sağlayıcınızda/gateway'inizde tanımlı en yetenekli model adı
+- **Model:** Sağlayıcınızda/gateway'inizde tanımlı model adı
 - **Genel özel inceleme kuralları:** Yalnızca sizin IDE'nizde geçerli kişisel kurallar (örn. *"Tüm metotlarda `@Transactional` anotasyonunu doğrula"*).
 - **Repo Bazlı Özel İnceleme Talimatları:** Belirli bir repo için yalnızca sizin IDE'nizde geçerli kurallar.
 - **Ortak Talimat Reposu:** Ekipçe paylaşılan kuralların bulunduğu Bitbucket reposu (aşağıya bakın).

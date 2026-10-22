@@ -53,4 +53,23 @@ class DiffLocationsTest {
         val annotated = DiffLocations.annotateDiffLines(diff)
         assertTrue(annotated.contains("+[review-location {\"file\":\"src/A.kt\",\"line\":11,\"side\":\"new\"}] val b = 3"))
     }
+
+    @Test
+    fun `Bitbucket Server src ve dst onekleri yoldan atilir`() {
+        val serverDiff = """
+            diff --git src://dml/T1/a.sql dst://dml/T1/a.sql
+            new file mode 100644
+            --- /dev/null
+            +++ dst://dml/T1/a.sql
+            @@ -0,0 +1,2 @@
+            +INSERT INTO X VALUES (1);
+            +INSERT INTO X VALUES (2);
+        """.trimIndent()
+        val locations = DiffLocations.diffLineLocations(serverDiff)
+        assertEquals(listOf("dml/T1/a.sql"), locations.map { it.path }.distinct())
+        assertNull(locations.first().srcPath)
+        val finding = ReviewFinding("dst://dml/T1/a.sql", 2, "new", "low", "bug", "m", "s")
+        assertEquals(2, DiffLocations.findInlineLocation(finding, locations)?.line)
+        assertEquals("dml/T1/a.sql", DiffSections.fileFromHeader(serverDiff))
+    }
 }

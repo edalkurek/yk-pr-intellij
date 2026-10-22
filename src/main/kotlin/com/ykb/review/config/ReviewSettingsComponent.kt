@@ -22,7 +22,6 @@ import com.ykb.review.ai.LLMClient
 import com.ykb.review.bitbucket.BitbucketClient
 import com.ykb.review.bitbucket.BitbucketRepository
 import com.ykb.review.net.Http
-import com.ykb.review.review.FindingsPresenter
 import com.ykb.review.util.safeMessage
 import java.awt.BorderLayout
 import java.awt.Component
@@ -50,36 +49,14 @@ class ReviewSettingsComponent {
     val bitbucketUrlField = JBTextField()
     val bitbucketTokenField = JBPasswordField()
 
-    val autoReviewEnabledCheck = JBCheckBox("Auto PR Review'u etkinleştir (reviewer olduğum açık PR'ları arka planda incele ve yorum gönder)")
+    val autoReviewEnabledCheck = JBCheckBox("Auto PR Review'u etkinleştir")
     val autoReviewIntervalSpinner = JSpinner(SpinnerNumberModel(5, 1, 1440, 1))
 
     val aiBaseUrlField = JBTextField()
     val aiApiKeyField = JBPasswordField()
-    val fastModelCombo = ComboBox(ReviewSettingsState.PRESET_MODELS.toTypedArray()).apply { isEditable = true }
-    val complexModelCombo = ComboBox(ReviewSettingsState.PRESET_MODELS.toTypedArray()).apply { isEditable = true }
+    val modelCombo = ComboBox(ReviewSettingsState.PRESET_MODELS.toTypedArray()).apply { isEditable = true }
 
-    val minSeverityCombo = ComboBox(arrayOf("low", "medium", "high")).apply {
-        renderer = object : BasicComboBoxRenderer() {
-            override fun getListCellRendererComponent(list: JList<*>?, value: Any?, index: Int, isSelected: Boolean, cellHasFocus: Boolean): Component {
-                val severity = value as? String
-                val text = when (severity) {
-                    "low" -> "Düşük ve üstü (tüm bulgular)"
-                    "medium" -> "Orta ve üstü"
-                    "high" -> "Yalnızca yüksek"
-                    else -> severity?.let { FindingsPresenter.severityLabel(it) } ?: ""
-                }
-                return super.getListCellRendererComponent(list, text, index, isSelected, cellHasFocus)
-            }
-        }
-    }
-    val maxChunkCharsSpinner = JSpinner(SpinnerNumberModel(ReviewSettingsState.DEFAULT_MAX_CHUNK_CHARS, 5_000, 500_000, 5_000))
     val extraInstructionsArea = JBTextArea(4, 40)
-    val maskSecretsCheck = JBCheckBox("Diff içindeki şifre / token / secret değerlerini modele göndermeden önce maskele")
-    val disableTlsCheck = JBCheckBox("TLS sertifika doğrulamasını devre dışı bırak (yalnızca kurumsal ağda sertifika sorunu varsa)")
-    private val tlsWarning = JBLabel("Güvenlik riski: ortadaki-adam (MITM) saldırılarına karşı korumayı kaldırır.", AllIcons.General.Warning, JBLabel.LEFT).apply {
-        foreground = JBColor.namedColor("Label.errorForeground", JBColor.RED)
-        font = JBUI.Fonts.smallFont()
-    }
 
     // Arayüz tercihleri
     val publicationModeCombo = ComboBox(
@@ -88,7 +65,7 @@ class ReviewSettingsComponent {
         renderer = object : BasicComboBoxRenderer() {
             override fun getListCellRendererComponent(list: JList<*>?, value: Any?, index: Int, isSelected: Boolean, cellHasFocus: Boolean): Component {
                 val text = when (value) {
-                    ReviewSettingsState.PUBLICATION_IDE -> "Yalnızca IDE'de göster (panelden gönderilebilir)"
+                    ReviewSettingsState.PUBLICATION_IDE -> "Yalnızca IDE'de göster"
                     ReviewSettingsState.PUBLICATION_PUBLISH -> "Doğrudan Bitbucket'a yorum yaz"
                     else -> "Her seferinde sor"
                 }
@@ -99,12 +76,12 @@ class ReviewSettingsComponent {
     val openDiffAfterReviewCheck = JBCheckBox("PR incelemesi bitince değişiklikleri diff görüntüleyicide otomatik aç")
     val showInlaysCheck = JBCheckBox("Editör ve diff'te bulgu satırlarının sonunda kısa açıklama göster")
 
-    val repoInstructionsModel = object : DefaultTableModel(arrayOf("Repo (host/proje/slug)", "Özel Talimat"), 0) {
+    val repoInstructionsModel = object : DefaultTableModel(arrayOf("Repo", "Özel Talimat"), 0) {
         override fun isCellEditable(row: Int, column: Int): Boolean = column == 1
     }
     val repoInstructionsTable = JBTable(repoInstructionsModel)
 
-    val sharedRulesRepoField = JBTextField().apply { emptyText.text = "PROJE/repo-slug (ör. SDLC/ai-review-rules) — boşsa kapalı" }
+    val sharedRulesRepoField = JBTextField().apply { emptyText.text = "PROJE/repo-slug" }
     val sharedRulesBranchField = JBTextField()
     private val testSharedRulesBtn = JButton("Test Et / Yenile")
     private val sharedRulesTestResult = JBLabel()
@@ -124,8 +101,6 @@ class ReviewSettingsComponent {
         testModelBtn.addActionListener { testModel() }
         testSharedRulesBtn.addActionListener { testSharedRules() }
         clearCredentialsBtn.addActionListener { clearCredentials() }
-        tlsWarning.isVisible = false
-        disableTlsCheck.addActionListener { tlsWarning.isVisible = disableTlsCheck.isSelected }
 
         val repoTablePanel = ToolbarDecorator.createDecorator(repoInstructionsTable)
             .setAddAction {
@@ -165,22 +140,20 @@ class ReviewSettingsComponent {
             .addComponent(JBLabel("<html><b>Bitbucket Bağlantısı</b></html>"))
             .addLabeledComponent("Bitbucket URL:", bitbucketUrlField, 1, false)
             .addLabeledComponent("Access Token:", bitbucketTokenField, 1, false)
-            .addComponentToRightColumn(comment("Bitbucket → Profil → HTTP access tokens. IDE'nin güvenli deposunda (PasswordSafe) saklanır."))
+            .addComponentToRightColumn(comment("Bitbucket → Profil → HTTP access tokens. IDE'nin güvenli deposunda saklanır."))
             .addComponent(row(testBitbucketBtn, clearCredentialsBtn, bitbucketTestResult))
 
             .addSeparator()
-            .addComponent(JBLabel("<html><b>AI Model ve Servis Ayarları (Bifrost Gateway / OpenAI uyumlu)</b></html>"))
+            .addComponent(JBLabel("<html><b>AI Model ve Servis Ayarları</b></html>"))
             .addLabeledComponent("AI API Base URL:", aiBaseUrlField, 1, false)
-            .addLabeledComponent("API Key (opsiyonel):", aiApiKeyField, 1, false)
-            .addLabeledComponent("Hızlı Model (rutin değişiklikler):", fastModelCombo, 1, false)
-            .addLabeledComponent("Güçlü Model (kritik değişiklikler):", complexModelCombo, 1, false)
-            .addComponentToRightColumn(comment("Güvenlik, transaction ve mimari açıdan hassas değişiklikler otomatik olarak güçlü modele yönlendirilir."))
+            .addLabeledComponent("API Key:", aiApiKeyField, 1, false)
+            .addLabeledComponent("Model:", modelCombo, 1, false)
             .addComponent(row(testModelBtn, modelTestResult))
 
             .addSeparator()
             .addComponent(JBLabel("<html><b>Auto PR Review</b></html>"))
             .addComponent(autoReviewEnabledCheck)
-            .addLabeledComponent("Tarama sıklığı (dakika):", autoReviewIntervalSpinner, 1, false)
+            .addLabeledComponent("Tarama sıklığı:", row(autoReviewIntervalSpinner, JBLabel("dakika")), 1, false)
 
             .addSeparator()
             .addComponent(JBLabel("<html><b>Arayüz</b></html>"))
@@ -189,20 +162,14 @@ class ReviewSettingsComponent {
             .addComponent(showInlaysCheck)
 
             .addSeparator()
-            .addComponent(JBLabel("<html><b>İnceleme &amp; Güvenlik</b></html>"))
-            .addLabeledComponent("Minimum önem seviyesi:", minSeverityCombo, 1, false)
-            .addLabeledComponent("Maksimum chunk boyutu (karakter):", maxChunkCharsSpinner, 1, false)
-            .addComponentToRightColumn(comment("Büyük diff'ler bu boyutta parçalara bölünür. Küçük değer = daha çok model çağrısı."))
+            .addComponent(JBLabel("<html><b>İnceleme</b></html>"))
             .addLabeledComponent("Genel özel inceleme kuralları:", JBScrollPane(extraInstructionsArea), 1, true)
-            .addComponent(maskSecretsCheck)
-            .addComponent(disableTlsCheck)
-            .addComponent(tlsWarning)
 
             .addSeparator()
             .addComponent(JBLabel("<html><b>Ortak Talimat Reposu</b></html>"))
-            .addLabeledComponent("Repo (PROJE/slug):", sharedRulesRepoField, 1, false)
+            .addLabeledComponent("Repo:", sharedRulesRepoField, 1, false)
             .addLabeledComponent("Dal:", sharedRulesBranchField, 1, false)
-            .addComponentToRightColumn(comment("Ekip talimatları Bitbucket'ta tutulur: general.md (tüm repolar), projects/PROJE.md, repos/PROJE/slug.md. Ayrıntılar README'de."))
+            .addComponentToRightColumn(comment("Ekip talimatları Bitbucket'ta tutulur: general.md, projects/PROJE.md, repos/PROJE/slug.md. Ayrıntılar README'de."))
             .addComponent(row(testSharedRulesBtn, sharedRulesTestResult))
 
             .addSeparator()
@@ -213,7 +180,6 @@ class ReviewSettingsComponent {
 
     /** Ayarlar yüklendikten sonra (reset) bağımlı görünümleri eşitler. */
     fun syncDependentState() {
-        tlsWarning.isVisible = disableTlsCheck.isSelected
         bitbucketTestResult.text = ""
         bitbucketTestResult.icon = null
         modelTestResult.text = ""
@@ -236,10 +202,8 @@ class ReviewSettingsComponent {
 
     // ------------------------------------------------------------------ getters
 
-    val fastModel: String get() = (fastModelCombo.editor.item ?: fastModelCombo.selectedItem)?.toString()?.trim().orEmpty()
-    val complexModel: String get() = (complexModelCombo.editor.item ?: complexModelCombo.selectedItem)?.toString()?.trim().orEmpty()
+    val model: String get() = (modelCombo.editor.item ?: modelCombo.selectedItem)?.toString()?.trim().orEmpty()
     val interval: Int get() = (autoReviewIntervalSpinner.value as Number).toInt()
-    val maxChunkChars: Int get() = (maxChunkCharsSpinner.value as Number).toInt()
     val typedBitbucketToken: String get() = String(bitbucketTokenField.password).trim()
     val typedApiKey: String get() = String(aiApiKeyField.password).trim()
 
@@ -262,8 +226,8 @@ class ReviewSettingsComponent {
     fun updateSecretHints(settings: ReviewSettingsState) {
         bitbucketTokenField.text = ""
         aiApiKeyField.text = ""
-        bitbucketTokenField.emptyText.text = if (settings.bitbucketTokenStored || settings.bitbucketToken.isNotBlank()) "Kayıtlı (değiştirmek için yeni değer girin)" else "Bitbucket HTTP access token"
-        aiApiKeyField.emptyText.text = if (settings.modelApiKeyStored || settings.aiApiKey.isNotBlank()) "Kayıtlı (değiştirmek için yeni değer girin)" else "Gerekmiyorsa boş bırakın"
+        bitbucketTokenField.emptyText.text = if (settings.bitbucketTokenStored || settings.bitbucketToken.isNotBlank()) "Kayıtlı" else "Bitbucket HTTP access token"
+        aiApiKeyField.emptyText.text = if (settings.modelApiKeyStored || settings.aiApiKey.isNotBlank()) "Kayıtlı" else "Gerekmiyorsa boş bırakın"
     }
 
     // ------------------------------------------------------------------ actions
@@ -274,7 +238,7 @@ class ReviewSettingsComponent {
         return BitbucketClient(
             bitbucketUrlField.text.trim(),
             token,
-            Http.client(30, 60, 30, disableTlsCheck.isSelected),
+            Http.client(30, 60, 30, false),
         )
     }
 
@@ -297,10 +261,10 @@ class ReviewSettingsComponent {
     }
 
     private fun testModel() {
-        val model = fastModel
+        val model = this.model
         withProgress("Model bağlantısı test ediliyor…") {
             val key = typedApiKey.ifEmpty { SecretStore.get(SecretStore.Key.MODEL_API_KEY).orEmpty() }
-            val client = LLMClient(aiBaseUrlField.text.trim(), key, Http.client(30, 90, 30, disableTlsCheck.isSelected))
+            val client = LLMClient(aiBaseUrlField.text.trim(), key, Http.client(30, 90, 30, false))
             client.chat(model, listOf(ChatMessage("user", "Sadece OK yaz.")), 0.0)
         }
             .onSuccess { showResult(modelTestResult, true, "Model yanıt verdi ($model): ${it.trim().take(40)}") }

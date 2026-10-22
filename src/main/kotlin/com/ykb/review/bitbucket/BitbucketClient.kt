@@ -26,7 +26,7 @@ import java.nio.charset.StandardCharsets
 class BitbucketClient(
     baseUrl: String,
     private val token: String,
-    private val http: OkHttpClient = Http.client(30, 60, 30, ReviewSettingsState.instance.disableTlsVerification),
+    private val http: OkHttpClient = Http.client(30, 60, 30, false),
 ) {
     val webBaseUrl: String
     private val apiBaseUrl: String

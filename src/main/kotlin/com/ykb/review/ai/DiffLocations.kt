@@ -33,10 +33,10 @@ object DiffLocations {
                 newPath = ""
                 inHunk = false
             } else if (!inHunk && text.startsWith("--- ")) {
-                oldPath = headerPath(text.substring(4), "a/")
+                oldPath = headerPath(text.substring(4), "a/", "src://")
                 newPath = ""
             } else if (!inHunk && text.startsWith("+++ ")) {
-                newPath = headerPath(text.substring(4), "b/")
+                newPath = headerPath(text.substring(4), "b/", "dst://")
             } else if (text.startsWith("@@ ")) {
                 val match = HUNK.find(text)
                 inHunk = match != null
@@ -75,14 +75,18 @@ object DiffLocations {
         return result
     }
 
-    internal fun headerPath(value: String, prefix: String): String {
+    /** Git a/ ve b/, Bitbucket Server'ın ham PR diff'i src:// ve dst:// öneklerini kullanır. */
+    internal val PATH_PREFIX = Regex("^(?:[ab]/|src://|dst://)")
+
+    internal fun headerPath(value: String, vararg prefixes: String): String {
         var path = value.split('\t')[0]
         if (path.startsWith("\"")) {
             if (!path.endsWith("\"") || path.length < 2) return ""
             path = decodeQuoted(path.substring(1, path.length - 1)) ?: return ""
         }
         if (path == "/dev/null") return ""
-        return if (path.startsWith(prefix)) path.substring(prefix.length) else path
+        val prefix = prefixes.firstOrNull { path.startsWith(it) } ?: return path
+        return path.substring(prefix.length)
     }
 
     /** Git'in C tarzı kaçışlı (UTF-8 baytları sekizlik) yol biçimini çözer. */
@@ -148,7 +152,7 @@ object DiffLocations {
         fun matchesPath(location: InlineCommentLocation, path: String): Boolean =
             location.path == path || (location.side == "old" && location.srcPath == path)
         // Önce birebir repo yolu; a/ ve b/ gerçek klasör adı da olabilir.
-        val path = if (locations.any { matchesPath(it, file) }) file else file.replace(Regex("^[ab]/"), "")
+        val path = if (locations.any { matchesPath(it, file) }) file else file.replace(PATH_PREFIX, "")
         val matches = locations.filter {
             it.line == line && (finding.side == null || it.side == finding.side) && matchesPath(it, path)
         }

@@ -1,5 +1,6 @@
 package com.ykb.review.ui
 
+import com.ykb.review.ai.DiffLocations
 import com.intellij.diff.DiffDialogHints
 import com.intellij.diff.DiffManager
 import com.intellij.diff.util.DiffUserDataKeys
@@ -74,7 +75,7 @@ object PullRequestDiffViewer {
                         NotificationType.WARNING,
                     )
                 }
-                val focusPath = focus?.path?.replace('\\', '/')?.removePrefix("./")?.replace(Regex("^[ab]/"), "")
+                val focusPath = focus?.path?.replace('\\', '/')?.removePrefix("./")?.replace(DiffLocations.PATH_PREFIX, "")
                 val focusIndex = focusPath?.let { path ->
                     info.files.indexOfFirst { it.path == path || it.srcPath == path }.takeIf { it >= 0 }
                         ?: info.files.indexOfFirst { it.path.endsWith("/$path") }.takeIf { it >= 0 }

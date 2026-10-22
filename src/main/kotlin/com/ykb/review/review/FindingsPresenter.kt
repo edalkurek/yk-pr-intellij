@@ -1,5 +1,6 @@
 package com.ykb.review.review
 
+import com.ykb.review.ai.DiffLocations
 import com.ykb.review.ai.ReviewConstants
 import com.ykb.review.ai.ReviewFinding
 
@@ -25,7 +26,7 @@ object FindingsPresenter {
         val maxSeverity: Int get() = findings.maxOfOrNull { ReviewConstants.riskScore(it.severity) } ?: 0
     }
 
-    fun normalizePath(path: String): String = path.replace('\\', '/').removePrefix("./").replace(Regex("^[ab]/"), "")
+    fun normalizePath(path: String): String = path.replace('\\', '/').removePrefix("./").replace(DiffLocations.PATH_PREFIX, "")
 
     /** Dosyaya göre gruplar; önce en yüksek önemli dosyalar, dosya içinde önem (azalan) ve satır (artan) sırası. */
     fun group(findings: List<ReviewFinding>): List<FileGroup> =

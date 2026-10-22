@@ -65,8 +65,7 @@ class ReviewCoordinator(private val settings: ReviewSettingsState = ReviewSettin
         onProgress: ((String, Double) -> Unit)? = null,
     ): ReviewOutcome {
         Cancellation.check()
-        val fastModel = settings.fastModelName.trim()
-        val complexModel = ConfigValidation.modelName(settings.complexModelName, "Güçlü model (Tier 2) adı")
+        val model = ConfigValidation.modelName(settings.modelName, "Model adı")
         val bitbucket = BitbucketClient.fromSettings()
         val llm = LLMClient.fromSettings()
 
@@ -81,7 +80,7 @@ class ReviewCoordinator(private val settings: ReviewSettingsState = ReviewSettin
         if (diff.isBlank()) throw IllegalStateException("Pull request diff içeriği boş.")
 
         val instructions = InstructionResolver(settings).forPullRequest(ref)
-        val reviewInput = if (settings.maskSecretsInDiff) DiffFilter.maskSecrets(diff) else diff
+        val reviewInput = DiffFilter.maskSecrets(diff)
 
         val review = ReviewEngine.review(
             ChatClient { model, messages -> llm.chat(model, messages) },
@@ -94,11 +93,10 @@ class ReviewCoordinator(private val settings: ReviewSettingsState = ReviewSettin
                 extraInstructions = instructions.text,
             ),
             ReviewEngineOptions(
-                fastModel = fastModel,
-                complexModel = complexModel,
-                maxChunkChars = settings.maxChunkChars.coerceAtLeast(4_000),
+                fastModel = model,
+                complexModel = model,
+                maxChunkChars = ReviewSettingsState.DEFAULT_MAX_CHUNK_CHARS,
                 failOnChunkError = false,
-                minSeverity = settings.minSeverity,
                 onChunkError = { e, index, total ->
                     log.warn("PR #${ref.pullRequestId}: AI review parçası ${index + 1}/$total başarısız: ${e.safeMessage()}")
                 },
@@ -127,7 +125,7 @@ class ReviewCoordinator(private val settings: ReviewSettingsState = ReviewSettin
         val marker = CommentFormatter.createMarker(
             ref.pullRequestId,
             outcome.commitHash,
-            outcome.review.modelUsed ?: settings.complexModelName,
+            outcome.review.modelUsed ?: settings.modelName,
         )
         val publication = PublishService.publish(client, ref, outcome.review, outcome.diff, key, marker, publicationState) { finding ->
             val reason = when {

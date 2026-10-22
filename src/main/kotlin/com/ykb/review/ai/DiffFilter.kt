@@ -61,7 +61,7 @@ object DiffFilter {
 
 internal object DiffSections {
     private val START = Regex("^diff --git ", RegexOption.MULTILINE)
-    private val HEADER = Regex("^diff --git a/(.+?) b/(.+)$", RegexOption.MULTILINE)
+    private val HEADER = Regex("^diff --git (?:a/|src://)(.+?) (?:b/|dst://)(.+)$", RegexOption.MULTILINE)
 
     fun starts(diff: String): List<Int> = START.findAll(diff).map { it.range.first }.toList()
 

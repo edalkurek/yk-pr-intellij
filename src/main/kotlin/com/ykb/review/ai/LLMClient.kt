@@ -21,7 +21,7 @@ class AIClientException(message: String, val status: Int? = null, cause: Throwab
 class LLMClient(
     baseUrl: String,
     private val apiKey: String?,
-    private val http: OkHttpClient = Http.client(45, 180, 60, ReviewSettingsState.instance.disableTlsVerification),
+    private val http: OkHttpClient = Http.client(45, 180, 60, false),
 ) {
     private val endpoint: String
 
