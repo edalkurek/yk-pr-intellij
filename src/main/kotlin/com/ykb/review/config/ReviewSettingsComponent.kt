@@ -51,6 +51,7 @@ class ReviewSettingsComponent {
 
     val autoReviewEnabledCheck = JBCheckBox("Auto PR Review'u etkinleştir")
     val autoReviewIntervalSpinner = JSpinner(SpinnerNumberModel(5, 1, 1440, 1))
+    val includeOwnPullRequestsCheck = JBCheckBox("Kendi PR'larımı da incele")
 
     val aiBaseUrlField = JBTextField()
     val aiApiKeyField = JBPasswordField()
@@ -154,6 +155,7 @@ class ReviewSettingsComponent {
             .addComponent(JBLabel("<html><b>Auto PR Review</b></html>"))
             .addComponent(autoReviewEnabledCheck)
             .addLabeledComponent("Tarama sıklığı:", row(autoReviewIntervalSpinner, JBLabel("dakika")), 1, false)
+            .addComponent(includeOwnPullRequestsCheck)
 
             .addSeparator()
             .addComponent(JBLabel("<html><b>Arayüz</b></html>"))

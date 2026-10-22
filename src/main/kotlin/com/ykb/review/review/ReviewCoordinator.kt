@@ -38,7 +38,8 @@ class ReviewCoordinator(private val settings: ReviewSettingsState = ReviewSettin
         override fun markPublished(key: String) = settings.markPublished(key)
     }
 
-    fun listPullRequests(): List<PullRequest> = BitbucketClient.fromSettings().listOpenPullRequestsForReviewer()
+    fun listPullRequests(): List<PullRequest> =
+        BitbucketClient.fromSettings().listOpenPullRequestsForReviewer(settings.includeOwnPullRequests)
 
     fun listRepositories(): List<BitbucketRepository> = BitbucketClient.fromSettings().listRepositories()
 

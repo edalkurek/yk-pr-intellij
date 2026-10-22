@@ -66,13 +66,18 @@ class BitbucketClient(
     }
 
     /** Kullanıcının REVIEWER olduğu tüm açık PR'lar (dashboard API'si, proje/repo bilgisi gerekmez). */
-    fun listOpenPullRequestsForReviewer(): List<PullRequest> {
-        val result = mutableListOf<PullRequest>()
-        paginate("$apiBaseUrl/dashboard/pull-requests?role=REVIEWER&state=OPEN&limit=100") { item ->
-            result.add(toPullRequest(item))
-            false
+    /** Reviewer olunan açık PR'lar; [includeAuthored] ise kullanıcının kendi açtıkları da (tekrarsız). */
+    fun listOpenPullRequestsForReviewer(includeAuthored: Boolean = false): List<PullRequest> {
+        val result = LinkedHashMap<String, PullRequest>()
+        val roles = if (includeAuthored) listOf("REVIEWER", "AUTHOR") else listOf("REVIEWER")
+        for (role in roles) {
+            paginate("$apiBaseUrl/dashboard/pull-requests?role=$role&state=OPEN&limit=100") { item ->
+                val pr = toPullRequest(item)
+                result.putIfAbsent("${pr.ref.projectKey}/${pr.ref.repositorySlug}/${pr.ref.pullRequestId}", pr)
+                false
+            }
         }
-        return result
+        return result.values.toList()
     }
 
     fun getPullRequest(ref: PullRequestRef): PullRequest =

@@ -149,7 +149,7 @@ class AutomaticReviewService : Disposable {
 
             val coordinator = ReviewCoordinator(settings)
             val client = BitbucketClient.fromSettings()
-            val pullRequests = client.listOpenPullRequestsForReviewer()
+            val pullRequests = client.listOpenPullRequestsForReviewer(settings.includeOwnPullRequests)
             if (pullRequests.isEmpty()) return "Açık PR bulunamadı"
 
             var reviewed = 0

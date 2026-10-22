@@ -30,6 +30,7 @@ class ReviewSettingsConfigurable : Configurable {
             ui.typedApiKey.isNotEmpty() ||
             ui.autoReviewEnabledCheck.isSelected != s.automaticReviewEnabled ||
             ui.interval != s.automaticReviewIntervalMinutes ||
+            ui.includeOwnPullRequestsCheck.isSelected != s.includeOwnPullRequests ||
             ui.aiBaseUrlField.text.trim() != s.aiBaseUrl ||
             ui.model != s.modelName ||
             ui.extraInstructionsArea.text.trim() != s.extraInstructions ||
@@ -71,6 +72,7 @@ class ReviewSettingsConfigurable : Configurable {
         s.modelName = model
         s.automaticReviewEnabled = ui.autoReviewEnabledCheck.isSelected
         s.automaticReviewIntervalMinutes = ui.interval
+        s.includeOwnPullRequests = ui.includeOwnPullRequestsCheck.isSelected
         s.extraInstructions = ui.extraInstructionsArea.text.trim()
         s.publicationMode = (ui.publicationModeCombo.selectedItem as? String) ?: ReviewSettingsState.PUBLICATION_ASK
         s.openDiffAfterReview = ui.openDiffAfterReviewCheck.isSelected
@@ -96,6 +98,7 @@ class ReviewSettingsConfigurable : Configurable {
         ui.modelCombo.selectedItem = s.modelName
         ui.autoReviewEnabledCheck.isSelected = s.automaticReviewEnabled
         ui.autoReviewIntervalSpinner.value = s.automaticReviewIntervalMinutes.coerceIn(1, 1440)
+        ui.includeOwnPullRequestsCheck.isSelected = s.includeOwnPullRequests
         ui.extraInstructionsArea.text = s.extraInstructions
         ui.publicationModeCombo.selectedItem = s.publicationMode
         ui.openDiffAfterReviewCheck.isSelected = s.openDiffAfterReview

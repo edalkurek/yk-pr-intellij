@@ -17,6 +17,10 @@
     ]]></description>
 
     <change-notes><![CDATA[
+        <h3>1.7.0 — Kendi PR'larını inceleme</h3>
+        <ul>
+            <li><b>Kendi PR'larımı da incele:</b> Ayarlardaki yeni seçenek açıksa, reviewer olunan PR'ların yanında kullanıcının açtığı PR'lar da listelenir, incelenir ve (otomatik inceleme dahil) yorumlanır.</li>
+        </ul>
         <h3>1.6.0 — Ekip kullanımında tekrar yorum önleme</h3>
         <ul>
             <li><b>Commit başına tek inceleme:</b> Ekipten biri bir commit için yorum yayımladıysa (VS Code veya IntelliJ, hangi model olursa olsun) tekrar yayımlanmaz.</li>

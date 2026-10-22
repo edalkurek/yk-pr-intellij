@@ -82,4 +82,25 @@ class BitbucketClientTest {
 
         assertNull(client.getEffectiveDiffHashes(ref))
     }
+
+    private fun pullRequestPage(vararg ids: Int): MockResponse {
+        val values = ids.joinToString(",") { id ->
+            """{"id":$id,"title":"PR $id","state":"OPEN","fromRef":{"displayId":"f","latestCommit":"c"},""" +
+                """"toRef":{"displayId":"main","repository":{"slug":"repo","project":{"key":"PRJ"}}}}"""
+        }
+        return MockResponse().setBody("""{"values":[$values],"isLastPage":true}""")
+    }
+
+    @Test
+    fun `kendi PR'larim istenirse AUTHOR rolu de tekrarsiz listelenir`() {
+        server.enqueue(pullRequestPage(1, 2))
+        assertEquals(listOf(1L, 2L), client.listOpenPullRequestsForReviewer().map { it.ref.pullRequestId })
+        assertEquals(true, server.takeRequest().path!!.contains("role=REVIEWER"))
+
+        server.enqueue(pullRequestPage(1, 2))
+        server.enqueue(pullRequestPage(2, 3))
+        assertEquals(listOf(1L, 2L, 3L), client.listOpenPullRequestsForReviewer(includeAuthored = true).map { it.ref.pullRequestId })
+        server.takeRequest()
+        assertEquals(true, server.takeRequest().path!!.contains("role=AUTHOR&state=OPEN"))
+    }
 }

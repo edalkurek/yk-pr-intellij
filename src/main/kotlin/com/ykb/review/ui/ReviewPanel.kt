@@ -380,7 +380,7 @@ class ReviewPanel(private val project: Project, parentDisposable: Disposable) : 
         prListModel.clear()
         visible.forEach { prListModel.addElement(it) }
         visible.indexOfFirst { it.ref == selected }.takeIf { it >= 0 }?.let { prList.selectedIndex = it }
-        prHeaderLabel.text = "<html><b>Reviewer olduğum açık PR'lar</b>" +
+        prHeaderLabel.text = "<html><b>${prListTitle()}</b>" +
             (if (everLoaded) " <font color='${SeverityStyle.hex(UIUtil.getContextHelpForeground())}'>(${visible.size}${if (repo != null) "/${loadedPRs.size}" else ""})</font>" else "") +
             "</html>"
         renderPrEmptyState()
@@ -401,12 +401,15 @@ class ReviewPanel(private val project: Project, parentDisposable: Disposable) : 
                 text.appendLine("PR'larımı Getir", SimpleTextAttributes.LINK_PLAIN_ATTRIBUTES) { refreshReviewerPullRequests() }
             }
             else -> {
-                text.appendLine("Reviewer olduğunuz açık PR yok.")
+                text.appendLine(if (ReviewSettingsState.instance.includeOwnPullRequests) "Reviewer olduğunuz veya açtığınız açık PR yok." else "Reviewer olduğunuz açık PR yok.")
                 text.appendLine("Yenile", SimpleTextAttributes.LINK_PLAIN_ATTRIBUTES) { refreshReviewerPullRequests() }
             }
         }
-        if (prHeaderLabel.text.isNullOrEmpty()) prHeaderLabel.text = "<html><b>Reviewer olduğum açık PR'lar</b></html>"
+        if (prHeaderLabel.text.isNullOrEmpty()) prHeaderLabel.text = "<html><b>${prListTitle()}</b></html>"
     }
+
+    private fun prListTitle(): String =
+        if (ReviewSettingsState.instance.includeOwnPullRequests) "Reviewer olduğum ve açtığım PR'lar" else "Reviewer olduğum açık PR'lar"
 
     private fun reviewSelected() {
         val pr = selectedPr() ?: return

@@ -39,6 +39,9 @@ class ReviewSettingsState : PersistentStateComponent<ReviewSettingsState> {
     var automaticReviewEnabled: Boolean = false
     var automaticReviewIntervalMinutes: Int = 5
 
+    /** Reviewer olunan PR'ların yanında kullanıcının kendi açtığı PR'lar da listelenir ve incelenir. */
+    var includeOwnPullRequests: Boolean = false
+
     // İnceleme Talimatları
     var extraInstructions: String = ""
 
