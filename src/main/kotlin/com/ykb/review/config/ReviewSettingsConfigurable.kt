@@ -33,6 +33,7 @@ class ReviewSettingsConfigurable : Configurable {
             ui.includeOwnPullRequestsCheck.isSelected != s.includeOwnPullRequests ||
             ui.aiBaseUrlField.text.trim() != s.aiBaseUrl ||
             ui.model != s.modelName ||
+            ui.customModels != s.customModels ||
             ui.extraInstructionsArea.text.trim() != s.extraInstructions ||
             ui.publicationModeCombo.selectedItem != s.publicationMode ||
             ui.openDiffAfterReviewCheck.isSelected != s.openDiffAfterReview ||
@@ -70,6 +71,11 @@ class ReviewSettingsConfigurable : Configurable {
         s.bitbucketBaseUrl = bitbucketUrl
         s.aiBaseUrl = aiUrl
         s.modelName = model
+        // Elle yazılıp listeye eklenmemiş model de kaydedilsin.
+        s.customModels = ReviewSettingsState.mergeModels(ui.customModels + model)
+            .filterNot { ReviewSettingsState.isPresetModel(it) }
+            .toMutableList()
+        ui.setModels(s.customModels, model)
         s.automaticReviewEnabled = ui.autoReviewEnabledCheck.isSelected
         s.automaticReviewIntervalMinutes = ui.interval
         s.includeOwnPullRequests = ui.includeOwnPullRequestsCheck.isSelected
@@ -95,7 +101,7 @@ class ReviewSettingsConfigurable : Configurable {
         val ui = ui ?: return
         ui.bitbucketUrlField.text = s.bitbucketBaseUrl
         ui.aiBaseUrlField.text = s.aiBaseUrl
-        ui.modelCombo.selectedItem = s.modelName
+        ui.setModels(s.customModels, s.modelName)
         ui.autoReviewEnabledCheck.isSelected = s.automaticReviewEnabled
         ui.autoReviewIntervalSpinner.value = s.automaticReviewIntervalMinutes.coerceIn(1, 1440)
         ui.includeOwnPullRequestsCheck.isSelected = s.includeOwnPullRequests

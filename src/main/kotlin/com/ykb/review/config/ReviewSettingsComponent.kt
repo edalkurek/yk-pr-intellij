@@ -28,6 +28,7 @@ import java.awt.Component
 import java.awt.Dimension
 import java.awt.FlowLayout
 import javax.swing.BorderFactory
+import javax.swing.DefaultComboBoxModel
 import javax.swing.JButton
 import javax.swing.JComponent
 import javax.swing.JList
@@ -55,7 +56,13 @@ class ReviewSettingsComponent {
 
     val aiBaseUrlField = JBTextField()
     val aiApiKeyField = JBPasswordField()
-    val modelCombo = ComboBox(ReviewSettingsState.PRESET_MODELS.toTypedArray()).apply { isEditable = true }
+    val modelCombo = ComboBox(DefaultComboBoxModel(ReviewSettingsState.PRESET_MODELS.toTypedArray())).apply { isEditable = true }
+    private val addModelBtn = JButton("Model Ekle", AllIcons.General.Add).apply {
+        toolTipText = "Listeye yeni model adı ekler (ör. openai/gpt-4.1)"
+    }
+    private val removeModelBtn = JButton("Modeli Kaldır", AllIcons.General.Remove).apply {
+        toolTipText = "Seçili, sonradan eklenmiş modeli listeden kaldırır (hazır modeller kaldırılamaz)"
+    }
 
     val extraInstructionsArea = JBTextArea(4, 40)
 
@@ -100,6 +107,9 @@ class ReviewSettingsComponent {
 
         testBitbucketBtn.addActionListener { testBitbucket() }
         testModelBtn.addActionListener { testModel() }
+        addModelBtn.addActionListener { addModel() }
+        removeModelBtn.addActionListener { removeSelectedModel() }
+        modelCombo.addActionListener { updateModelButtons() }
         testSharedRulesBtn.addActionListener { testSharedRules() }
         clearCredentialsBtn.addActionListener { clearCredentials() }
 
@@ -149,6 +159,8 @@ class ReviewSettingsComponent {
             .addLabeledComponent("AI API Base URL:", aiBaseUrlField, 1, false)
             .addLabeledComponent("API Key:", aiApiKeyField, 1, false)
             .addLabeledComponent("Model:", modelCombo, 1, false)
+            .addComponentToRightColumn(row(addModelBtn, removeModelBtn))
+            .addComponentToRightColumn(comment("Listede olmayan bir modeli \"Model Ekle\" ile ekleyin; eklenen modeller kaydedilir ve tekrar seçilebilir."))
             .addComponent(row(testModelBtn, modelTestResult))
 
             .addSeparator()
@@ -203,6 +215,21 @@ class ReviewSettingsComponent {
     }
 
     // ------------------------------------------------------------------ getters
+
+    /** Hazır modeller dışında listede bulunan (kullanıcının eklediği) modeller. */
+    val customModels: List<String>
+        get() {
+            val list = (0 until modelCombo.itemCount).map { modelCombo.getItemAt(it).toString() }
+            return list.filterNot { ReviewSettingsState.isPresetModel(it) }
+        }
+
+    /** Model listesini hazır + özel modellerle doldurur ve [selected] modeli seçer (listede yoksa eklenir). */
+    fun setModels(custom: List<String>, selected: String) {
+        val all = ReviewSettingsState.mergeModels(custom + listOfNotNull(selected.trim().takeIf { it.isNotEmpty() }))
+        modelCombo.model = DefaultComboBoxModel(all.toTypedArray())
+        modelCombo.selectedItem = all.firstOrNull { it.equals(selected.trim(), ignoreCase = true) } ?: all.first()
+        updateModelButtons()
+    }
 
     val model: String get() = (modelCombo.editor.item ?: modelCombo.selectedItem)?.toString()?.trim().orEmpty()
     val interval: Int get() = (autoReviewIntervalSpinner.value as Number).toInt()
@@ -260,6 +287,51 @@ class ReviewSettingsComponent {
         withProgress("Bitbucket bağlantısı test ediliyor…") { bitbucketClient().verifyAccess() }
             .onSuccess { showResult(bitbucketTestResult, true, "Bağlantı başarılı · reviewer olduğunuz açık PR: $it") }
             .onFailure { showResult(bitbucketTestResult, false, "Başarısız: ${it.safeMessage()}") }
+    }
+
+    private fun addModel() {
+        val typed = model.takeUnless { m -> (0 until modelCombo.itemCount).any { modelCombo.getItemAt(it).toString().equals(m, ignoreCase = true) } }
+        val name = Messages.showInputDialog(
+            mainPanel,
+            "Model adı (gateway'de tanımlı adla birebir aynı, ör. openai/gpt-4.1):",
+            "Model Ekle",
+            Messages.getQuestionIcon(),
+            typed.orEmpty(),
+            null,
+        )?.trim()
+        if (name.isNullOrEmpty()) return
+        if (name.any { it.isWhitespace() }) {
+            Messages.showErrorDialog(mainPanel, "Model adı boşluk içeremez.", "Model Ekle")
+            return
+        }
+        val existing = (0 until modelCombo.itemCount).map { modelCombo.getItemAt(it).toString() }
+            .firstOrNull { it.equals(name, ignoreCase = true) }
+        if (existing != null) {
+            modelCombo.selectedItem = existing
+        } else {
+            modelCombo.addItem(name)
+            modelCombo.selectedItem = name
+        }
+        modelTestResult.text = ""
+        modelTestResult.icon = null
+        updateModelButtons()
+    }
+
+    private fun removeSelectedModel() {
+        val selected = model
+        if (selected.isEmpty() || ReviewSettingsState.isPresetModel(selected)) return
+        val index = (0 until modelCombo.itemCount).firstOrNull { modelCombo.getItemAt(it).toString().equals(selected, ignoreCase = true) } ?: return
+        val answer = Messages.showYesNoDialog(mainPanel, "'$selected' modeli listeden kaldırılsın mı?", "Modeli Kaldır", Messages.getQuestionIcon())
+        if (answer != Messages.YES) return
+        modelCombo.removeItemAt(index)
+        modelCombo.selectedItem = ReviewSettingsState.DEFAULT_MODEL
+        updateModelButtons()
+    }
+
+    private fun updateModelButtons() {
+        val selected = model
+        removeModelBtn.isEnabled = selected.isNotEmpty() && !ReviewSettingsState.isPresetModel(selected) &&
+            (0 until modelCombo.itemCount).any { modelCombo.getItemAt(it).toString().equals(selected, ignoreCase = true) }
     }
 
     private fun testModel() {

@@ -32,6 +32,8 @@ class ReviewSettingsState : PersistentStateComponent<ReviewSettingsState> {
 
     var modelName: String = DEFAULT_MODEL
 
+    /** Kullanıcının ayarlardan eklediği modeller (hazır modellere ek olarak listelenir). */
+    var customModels: MutableList<String> = mutableListOf()
     /** ESKİ SÜRÜM ALANI: iki modelli sürümün güçlü modeli; [loadState] değeri [modelName] alanına taşır. */
     var complexModelName: String = ""
 
@@ -139,6 +141,10 @@ class ReviewSettingsState : PersistentStateComponent<ReviewSettingsState> {
             modelName = complexModelName
             complexModelName = ""
         }
+        // Eski sürümlerde elle yazılmış model listede kaybolmasın.
+        if (modelName.isNotBlank() && !isPresetModel(modelName) && customModels.none { it.equals(modelName.trim(), ignoreCase = true) }) {
+            customModels.add(modelName.trim())
+        }
     }
 
     companion object {
@@ -152,6 +158,18 @@ class ReviewSettingsState : PersistentStateComponent<ReviewSettingsState> {
         const val PUBLICATION_PUBLISH = "publish"
         val PRESET_MODELS = listOf(DEFAULT_MODEL, ALTERNATIVE_MODEL)
         private const val MAX_PUBLISHED_KEYS = 5000
+
+        fun isPresetModel(name: String): Boolean = PRESET_MODELS.any { it.equals(name.trim(), ignoreCase = true) }
+
+        /** Hazır modelleri başa koyar, ardından boş olmayan ve tekrar etmeyen özel modelleri ekler. */
+        fun mergeModels(custom: List<String>): List<String> {
+            val result = ArrayList<String>(PRESET_MODELS)
+            for (raw in custom) {
+                val name = raw.trim()
+                if (name.isNotEmpty() && result.none { it.equals(name, ignoreCase = true) }) result.add(name)
+            }
+            return result
+        }
 
         val instance: ReviewSettingsState
             get() = ApplicationManager.getApplication().getService(ReviewSettingsState::class.java)

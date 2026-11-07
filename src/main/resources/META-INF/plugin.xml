@@ -17,6 +17,10 @@
     ]]></description>
 
     <change-notes><![CDATA[
+        <h3>1.8.0 — Model ekleme</h3>
+        <ul>
+            <li><b>Model listesi:</b> Ayarlardaki "Model Ekle" ile hazır modellere yeni model eklenebilir; eklenen modeller kaydedilir ve listeden seçilebilir. "Modeli Kaldır" sonradan eklenen modeli listeden çıkarır.</li>
+        </ul>
         <h3>1.7.0 — Kendi PR'larını inceleme</h3>
         <ul>
             <li><b>Kendi PR'larımı da incele:</b> Ayarlardaki yeni seçenek açıksa, reviewer olunan PR'ların yanında kullanıcının açtığı PR'lar da listelenir, incelenir ve (otomatik inceleme dahil) yorumlanır.</li>

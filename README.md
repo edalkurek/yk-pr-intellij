@@ -88,7 +88,7 @@ IntelliJ IDEA içerisinde:
 - **Access Token:** Bitbucket HTTP Access Token
 - **AI Base URL:** OpenAI uyumlu `/chat/completions` uç noktası sunan sağlayıcı veya kurum içi model gateway URL'i
 - **API Key:** LLM API anahtarı
-- **Model:** Sağlayıcınızda/gateway'inizde tanımlı model adı
+- **Model:** Sağlayıcınızda/gateway'inizde tanımlı model adı. Listede yoksa **Model Ekle** ile ekleyin; eklenen modeller kaydedilir, **Modeli Kaldır** ile listeden çıkarılır.
 - **Kendi PR'larımı da incele:** Reviewer olduğunuz PR'ların yanında kendi açtığınız PR'ları da listeler, inceler ve yorumlar (otomatik inceleme dahil). Varsayılan kapalı.
 - **Genel özel inceleme kuralları:** Yalnızca sizin IDE'nizde geçerli kişisel kurallar (örn. *"Tüm metotlarda `@Transactional` anotasyonunu doğrula"*).
 - **Repo Bazlı Özel İnceleme Talimatları:** Belirli bir repo için yalnızca sizin IDE'nizde geçerli kurallar.
